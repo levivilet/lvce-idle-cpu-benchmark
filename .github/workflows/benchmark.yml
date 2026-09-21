@@ -1,0 +1,90 @@
+name: Idle CPU benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idle-cpu-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: Benchmark (${{ matrix.editor }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        editor: [lvce, vscode, zed, geany, eclipse, idea, atom, lapce, theia, basic-electron]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 curl xz-utils xvfb xauth openbox geany \
+            libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 openjdk-21-jre
+      - name: Cache editor archive
+        if: matrix.editor != 'geany'
+        id: archive
+        env:
+          EDITOR: ${{ matrix.editor }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, json, os
+          from pathlib import Path
+          entries = json.loads(Path('config/editors.lock.json').read_text())
+          entry = next(item for item in entries if item['id'] == os.environ['EDITOR'])
+          digest = hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f"path=.tmp/apps/{entry['archive']}", file=output)
+              print(f"key=idle-cpu-{entry['id']}-{digest}", file=output)
+          PYTHON
+      - uses: actions/cache/restore@v4
+        if: matrix.editor != 'geany'
+        id: archive-cache
+        with:
+          path: ${{ steps.archive.outputs.path }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.archive.outputs.key }}
+      - name: Download checksum-pinned editor
+        run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - name: Save verified archive
+        if: matrix.editor != 'geany' && steps.archive-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.archive.outputs.path }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.archive.outputs.key }}
+      - name: Measure idle CPU
+        run: |
+          if [[ "${{ github.event_name }}" == pull_request ]]; then
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 3
+          else
+            bash scripts/run.sh --editor "${{ matrix.editor }}"
+          fi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: idle-cpu-${{ matrix.editor }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 90
+
+  test:
+    name: benchmark
+    needs: benchmark
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run accounting tests
+        run: python3 -m unittest discover -s tests
+      - name: Require editor matrix success
+        if: needs.benchmark.result != 'success'
+        run: exit 1
