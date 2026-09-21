@@ -1,0 +1,10 @@
+{
+  "name": "lvce-idle-cpu-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "python3 -m py_compile scripts/*.py tests/*.py",
+    "test": "python3 -m unittest discover -s tests"
+  },
+  "engines": {"node": ">=24"}
+}
