@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import signal
 import subprocess
 import tempfile
 import time
@@ -48,7 +49,8 @@ def command_for(editor, home):
     if editor["id"] == "atom":
         common += ["--new-window"]
     if editor["id"] == "lapce":
-        common += ["--new"]
+        # Lapce launches a detached child unless --wait is supplied.
+        common += ["--new", "--wait"]
     return [str(binary), *common]
 
 
@@ -128,11 +130,17 @@ def trial(editor, settle_seconds, sample_seconds):
             }
         finally:
             if process:
-                process.terminate()
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    process.kill()
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
                     process.wait(timeout=5)
 
 

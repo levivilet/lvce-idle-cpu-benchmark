@@ -1,0 +1,5 @@
+{
+  "name": "lvce-idle-cpu-benchmark-basic-electron",
+  "private": true,
+  "main": "main.js"
+}
