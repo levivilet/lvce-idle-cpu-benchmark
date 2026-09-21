@@ -38,7 +38,7 @@ def command_for(editor, home):
     if editor["id"] == "vscode":
         common += ["--disable-extensions", "--skip-welcome", "--skip-release-notes"]
     if editor["id"] == "basic-electron":
-        common.append(str(ROOT / editor["app"]))
+        common += ["--ozone-platform=x11", str(ROOT / editor["app"])]
     if editor["id"] == "zed":
         common += ["--user-data-dir", str(home / "profile")]
     if editor["id"] == "eclipse":
@@ -92,12 +92,24 @@ def trial(editor, settle_seconds, sample_seconds):
             "XDG_CACHE_HOME": str(home / "cache"),
             "XDG_STATE_HOME": str(home / "state"),
             "ELECTRON_NO_ATTACH_CONSOLE": "1",
+            "LIBGL_ALWAYS_SOFTWARE": "1",
+            "GALLIUM_DRIVER": "llvmpipe",
+            "ZED_ALLOW_EMULATED_GPU": "1",
+            "ELECTRON_OZONE_PLATFORM_HINT": "x11",
         }
+        fixture = home / "idle-cpu.txt"
+        fixture.write_text("Idle CPU benchmark fixture.\n")
         command = command_for(editor, home)
-        process = subprocess.Popen(command, cwd=home, env=environment,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   start_new_session=True)
+        if editor["id"] != "theia":
+            command.append(str(fixture))
+        stdout_path = home / "stdout.log"
+        stderr_path = home / "stderr.log"
+        process = None
         try:
+            with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
+                process = subprocess.Popen(command, cwd=home, env=environment,
+                                           stdout=stdout, stderr=stderr,
+                                           start_new_session=True)
             time.sleep(settle_seconds)
             if process.poll() is not None:
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
@@ -107,14 +119,21 @@ def trial(editor, settle_seconds, sample_seconds):
             measurement.update({"valid": True, "pid": process.pid})
             return measurement
         except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
-            return {"valid": False, "error": str(error), "pid": process.pid}
+            return {
+                "valid": False,
+                "error": str(error),
+                "pid": process.pid if process else None,
+                "stdout": stdout_path.read_text(errors="replace")[-4000:],
+                "stderr": stderr_path.read_text(errors="replace")[-4000:],
+            }
         finally:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+            if process:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
 
 def main():
