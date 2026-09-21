@@ -37,7 +37,8 @@ as such in every result.
 ```sh
 sudo apt-get update
 sudo apt-get install -y python3 curl xz-utils xvfb xauth openbox \
-  libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 openjdk-21-jre
+  libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 \
+  mesa-utils mesa-vulkan-drivers libvulkan1 libasound2t64 openjdk-21-jre
 python3 scripts/install.py
 bash scripts/run.sh --editor lvce --repeats 3
 python3 -m unittest discover -s tests
