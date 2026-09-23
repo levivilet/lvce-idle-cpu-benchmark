@@ -8,6 +8,11 @@ This is an observation tool, not a ranking. Hosted runners are shared machines,
 so results from different runs and editors are only comparable when the runner
 image, protocol, and capture date are considered together.
 
+The latest complete benchmark run is published at
+[GitHub Pages](https://levivilet.github.io/lvce-idle-cpu-benchmark/). The report
+includes every trial, its measurement source, run provenance, and downloadable
+raw JSON for each editor. An incomplete or invalid matrix is not published.
+
 ## Measurement protocol
 
 - Linux x86-64, Ubuntu 24.04, X11/Xvfb, one editor per runner.
