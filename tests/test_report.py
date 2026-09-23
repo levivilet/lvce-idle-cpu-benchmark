@@ -48,6 +48,15 @@ class ReportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "do not match the matrix"):
                 report.load_results(root)
 
+    def test_loads_complete_matrix_from_downloaded_artifact_layout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for editor in report.EDITORS:
+                artifact = root / f"idle-cpu-{editor['id']}"
+                artifact.mkdir()
+                (artifact / "results.json").write_text(json.dumps(sample(editor["id"])))
+            self.assertEqual(len(report.load_results(root)), 10)
+
     def test_builds_per_editor_downloads_and_provenance(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)

@@ -37,7 +37,9 @@ def validate_result(data: dict, editor_id: str) -> dict:
 
 def load_results(results_root: Path) -> list[dict]:
     """Load exactly one valid result for every editor in the checked-in matrix."""
-    paths = list(results_root.glob("idle-cpu-*/results/results.json"))
+    # upload-artifact stores paths relative to the uploaded directory, so the
+    # benchmark's results/results.json becomes results.json in each artifact.
+    paths = list(results_root.glob("idle-cpu-*/results.json"))
     found: dict[str, Path] = {}
     for path in paths:
         try:
@@ -45,7 +47,7 @@ def load_results(results_root: Path) -> list[dict]:
             editor_id = data["editor"]["id"]
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
             raise ValueError(f"malformed benchmark artifact {path}: {error}") from error
-        if path.parent.parent.name != f"idle-cpu-{editor_id}":
+        if path.parent.name != f"idle-cpu-{editor_id}":
             raise ValueError(f"artifact directory does not match editor {editor_id}: {path}")
         if editor_id in found:
             raise ValueError(f"duplicate benchmark artifact for {editor_id}")
