@@ -65,6 +65,47 @@ def load_results(results_root: Path) -> list[dict]:
     return results
 
 
+def build_median_chart(entries: list[dict]) -> str:
+    """Render a labeled SVG comparison with lower medians near the bottom."""
+    width, height = 1000, 470
+    left, right, top, bottom = 64, 24, 38, 326
+    plot_width, plot_height = width - left - right, bottom - top
+    maximum = max((entry["medianUtilizationPercent"] for entry in entries), default=0)
+    # Leave headroom above the largest observation and keep the all-zero chart
+    # useful, while never clipping measurements above 100%.
+    axis_max = max(1, math.ceil(maximum * 1.1))
+    tick_count = 4
+    x_step = plot_width / max(1, len(entries))
+
+    parts = [
+        f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+        'aria-labelledby="chart-title chart-description" xmlns="http://www.w3.org/2000/svg">',
+        '<title id="chart-title">Median idle CPU utilization by editor</title>',
+        '<desc id="chart-description">Each editor is labeled below its marker. '
+        'The shared vertical scale starts at zero at the bottom, so lower markers '
+        'represent less median CPU utilization. Values are also shown next to markers.</desc>',
+    ]
+    for tick in range(tick_count + 1):
+        value = axis_max * tick / tick_count
+        y = bottom - plot_height * tick / tick_count
+        parts.append(f'<line class="grid" x1="{left}" y1="{y:.2f}" x2="{width-right}" y2="{y:.2f}"/>')
+        parts.append(f'<text class="tick" x="{left-10}" y="{y+5:.2f}" text-anchor="end">{value:.2f}%</text>')
+    parts.append(f'<text class="axis-label" x="{left}" y="{top-14}">CPU utilization (%)</text>')
+
+    for index, entry in enumerate(entries):
+        x = left + x_step * (index + 0.5)
+        value = entry["medianUtilizationPercent"]
+        y = bottom - (value / axis_max) * plot_height
+        name = html.escape(entry["name"])
+        label = f'{value:.2f}%'
+        parts.append(f'<line class="stem" x1="{x:.2f}" y1="{bottom}" x2="{x:.2f}" y2="{y:.2f}"/>')
+        parts.append(f'<circle class="marker" cx="{x:.2f}" cy="{y:.2f}" r="5"><title>{name}: {label}</title></circle>')
+        parts.append(f'<text class="value" x="{x:.2f}" y="{max(top+14, y-10):.2f}" text-anchor="middle">{label}</text>')
+        parts.append(f'<text class="editor" transform="translate({x:.2f} {bottom+14}) rotate(48)" text-anchor="start">{name}</text>')
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
 def build_report(results: list[dict], output: Path, run_url: str, commit: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
     raw_dir = output / "raw"
@@ -96,6 +137,7 @@ def build_report(results: list[dict], output: Path, run_url: str, commit: str) -
         )
     report = {"complete": True, "runUrl": run_url, "commit": commit, "editors": entries}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+    chart = build_median_chart(entries)
     safe_run_url = html.escape(run_url, quote=True)
     safe_commit = html.escape(commit)
     page = f"""<!doctype html>
@@ -105,10 +147,18 @@ def build_report(results: list[dict], output: Path, run_url: str, commit: str) -
 h1{{line-height:1.15}}.note{{padding:1rem;background:#e8f1fa;border-radius:.5rem}}.scroll{{overflow-x:auto}}
 table{{border-collapse:collapse;width:100%;background:white;margin:1.5rem 0}}th,td{{padding:.7rem;border-bottom:1px solid #d7e0e8;text-align:left;vertical-align:top}}
 th{{background:#e8f1fa}}code{{overflow-wrap:anywhere}}a{{color:#0759a5}}
+.chart-scroll{{overflow-x:auto;background:white;border:1px solid #d7e0e8;border-radius:.5rem;margin:1.5rem 0}}
+.chart{{display:block;width:100%;min-width:760px;height:auto}}.grid{{stroke:#d7e0e8;stroke-width:1}}
+.tick,.axis-label,.editor,.value{{font:12px system-ui,sans-serif;fill:#17212b}}.axis-label{{font-size:13px;font-weight:600}}
+.stem{{stroke:#4780ad;stroke-width:2}}.marker{{fill:#0759a5;stroke:white;stroke-width:2}}.value{{font-weight:600}}
 </style></head><body><main><h1>LVCE idle CPU benchmark</h1>
 <p>Latest complete run: <a href="{safe_run_url}">GitHub Actions run</a> · commit <code>{safe_commit}</code></p>
 <p class="note">CPU utilization is measured across each editor process tree. 100% means one fully busy logical CPU; values above 100% are valid. Each value below is a measured trial, and the summary is its median. Measurement sources and full host and protocol metadata are available in each downloadable JSON file.</p>
-<p>All {len(entries)} editors completed with valid measurements.</p><div class="scroll"><table><thead><tr><th>Editor</th><th>Version</th><th>Median CPU</th><th>Trials</th><th>Measurement source</th><th>Raw data</th></tr></thead><tbody>
+<p>All {len(entries)} editors completed with valid measurements.</p>
+<section aria-labelledby="chart-heading"><h2 id="chart-heading">Median idle CPU utilization by editor</h2>
+<p>Each marker uses the same vertical scale; lower values appear closer to zero at the bottom. Scroll the chart horizontally on narrow screens.</p>
+<div class="chart-scroll">{chart}</div></section>
+<div class="scroll"><table><thead><tr><th>Editor</th><th>Version</th><th>Median CPU</th><th>Trials</th><th>Measurement source</th><th>Raw data</th></tr></thead><tbody>
 {''.join(rows)}</tbody></table></div><p><a href="report.json">Download complete report JSON</a></p></main></body></html>
 """
     (output / "index.html").write_text(page)
