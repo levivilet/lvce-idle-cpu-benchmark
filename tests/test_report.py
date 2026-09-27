@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -69,6 +70,39 @@ class ReportTests(unittest.TestCase):
             self.assertIn("github.com/example/run/1", page)
             self.assertEqual(len(report_json["editors"]), 10)
             self.assertTrue((output / "raw/lvce.json").is_file())
+
+    def test_median_chart_maps_lower_values_to_the_bottom(self):
+        entries = [
+            {"name": "Low editor", "medianUtilizationPercent": 0},
+            {"name": "High editor", "medianUtilizationPercent": 50},
+        ]
+        chart = report.build_median_chart(entries)
+        points = re.findall(r'<circle class="marker" cx="([\d.]+)" cy="([\d.]+)"', chart)
+        self.assertEqual(len(points), 2)
+        self.assertGreater(float(points[0][1]), float(points[1][1]))
+        self.assertIn("Low editor", chart)
+        self.assertIn("High editor", chart)
+        self.assertIn("50.00%", chart)
+
+    def test_median_chart_keeps_ties_labeled_and_zero_visible(self):
+        chart = report.build_median_chart([
+            {"name": "Zero One", "medianUtilizationPercent": 0},
+            {"name": "Zero Two", "medianUtilizationPercent": 0},
+        ])
+        points = re.findall(r'<circle class="marker" cx="([\d.]+)" cy="([\d.]+)"', chart)
+        self.assertEqual(len(points), 2)
+        self.assertNotEqual(points[0][0], points[1][0])
+        self.assertEqual(points[0][1], points[1][1])
+        self.assertEqual(float(points[0][1]), 326)
+        self.assertIn("Zero One: 0.00%", chart)
+        self.assertIn("Zero Two: 0.00%", chart)
+
+    def test_median_chart_expands_scale_above_one_hundred_percent(self):
+        chart = report.build_median_chart([{"name": "Busy editor", "medianUtilizationPercent": 135}])
+        point = re.search(r'<circle class="marker" cx="[\d.]+" cy="([\d.]+)"', chart)
+        self.assertIsNotNone(point)
+        self.assertGreater(float(point.group(1)), 38)
+        self.assertIn("135.00%", chart)
 
 
 if __name__ == "__main__":
