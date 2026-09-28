@@ -67,6 +67,7 @@ def load_results(results_root: Path) -> list[dict]:
 
 def build_median_chart(entries: list[dict]) -> str:
     """Render a labeled SVG comparison with lower medians near the bottom."""
+    sorted_entries = sorted(entries, key=lambda entry: entry["medianUtilizationPercent"])
     width, height = 1000, 470
     left, right, top, bottom = 64, 24, 38, 326
     plot_width, plot_height = width - left - right, bottom - top
@@ -75,7 +76,7 @@ def build_median_chart(entries: list[dict]) -> str:
     # useful, while never clipping measurements above 100%.
     axis_max = max(1, math.ceil(maximum * 1.1))
     tick_count = 4
-    x_step = plot_width / max(1, len(entries))
+    x_step = plot_width / max(1, len(sorted_entries))
 
     parts = [
         f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
@@ -92,7 +93,7 @@ def build_median_chart(entries: list[dict]) -> str:
         parts.append(f'<text class="tick" x="{left-10}" y="{y+5:.2f}" text-anchor="end">{value:.2f}%</text>')
     parts.append(f'<text class="axis-label" x="{left}" y="{top-14}">CPU utilization (%)</text>')
 
-    for index, entry in enumerate(entries):
+    for index, entry in enumerate(sorted_entries):
         x = left + x_step * (index + 0.5)
         value = entry["medianUtilizationPercent"]
         y = bottom - (value / axis_max) * plot_height
