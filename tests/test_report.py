@@ -97,6 +97,39 @@ class ReportTests(unittest.TestCase):
         self.assertIn("Zero One: 0.00%", chart)
         self.assertIn("Zero Two: 0.00%", chart)
 
+    def test_median_chart_sorts_numeric_values_and_preserves_entry_associations(self):
+        entries = [
+            {"name": "Ten percent", "medianUtilizationPercent": 10},
+            {"name": "Zero percent", "medianUtilizationPercent": 0},
+            {"name": "Tied first", "medianUtilizationPercent": 2},
+            {"name": "One percent", "medianUtilizationPercent": 1},
+            {"name": "Tied second", "medianUtilizationPercent": 2},
+        ]
+        original_entries = [entry.copy() for entry in entries]
+
+        chart = report.build_median_chart(entries)
+
+        markers = re.findall(
+            r'<circle class="marker" cx="([\d.]+)" cy="([\d.]+)" r="5"><title>'
+            r'([^<]+): ([\d.]+%)</title></circle>',
+            chart,
+        )
+        self.assertEqual(
+            [(name, label) for _, _, name, label in markers],
+            [
+                ("Zero percent", "0.00%"),
+                ("One percent", "1.00%"),
+                ("Tied first", "2.00%"),
+                ("Tied second", "2.00%"),
+                ("Ten percent", "10.00%"),
+            ],
+        )
+        self.assertEqual(
+            [float(x) for x, _, _, _ in markers],
+            sorted(float(x) for x, _, _, _ in markers),
+        )
+        self.assertEqual(entries, original_entries)
+
     def test_median_chart_expands_scale_above_one_hundred_percent(self):
         chart = report.build_median_chart([{"name": "Busy editor", "medianUtilizationPercent": 135}])
         point = re.search(r'<circle class="marker" cx="[\d.]+" cy="([\d.]+)"', chart)
