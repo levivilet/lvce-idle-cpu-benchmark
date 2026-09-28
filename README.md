@@ -55,7 +55,8 @@ Use `python3 scripts/benchmark.py --help` for interval and editor options.
 
 ## CI
 
-Pull requests download and smoke-run every locked editor in a matrix, then run
-the accounting tests. Pushes and scheduled runs use three fresh trials per
-editor and upload raw JSON artifacts. The workflow intentionally does not claim
+Every CI trial measures idle CPU for 60 seconds. Pull requests run one trial per
+locked editor after 5 seconds of settling, then run the accounting tests. Pushes,
+scheduled runs, and manual runs use three fresh trials per editor, each after
+10 seconds of settling, and upload raw JSON artifacts. The workflow intentionally does not claim
 that a benchmark is complete when a trial is invalid.
