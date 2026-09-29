@@ -15,7 +15,7 @@ raw JSON for each editor. An incomplete or invalid matrix is not published.
 
 ## Measurement protocol
 
-- Linux x86-64, Ubuntu 24.04, X11/Xvfb, one editor per runner.
+- Linux x86-64, Ubuntu 26.04, X11/Xvfb, one editor per runner.
 - Downloads are described by `config/editors.lock.json`; every archive is
   verified before extraction. Profiles and XDG directories are temporary.
 - Startup and settling happen before the idle interval. No keyboard, mouse, or
