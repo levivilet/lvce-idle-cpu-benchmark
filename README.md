@@ -18,6 +18,10 @@ raw JSON for each editor. An incomplete or invalid matrix is not published.
 - Linux x86-64, Ubuntu 26.04, X11/Xvfb, one editor per runner.
 - Downloads are described by `config/editors.lock.json`; every archive is
   verified before extraction. Profiles and XDG directories are temporary.
+- Cursor is pinned to 3.22.12. Each trial initializes a fresh profile, seeds the
+  pinned version's welcome-state keys in its SQLite storage, then opens the
+  benchmark fixture. The trial starts settling only after a visible Cursor
+  window title contains the fixture name.
 - Startup and settling happen before the idle interval. No keyboard, mouse, or
   file workload is sent during the interval.
 - CPU time includes the editor's descendants. When a delegated cgroup is

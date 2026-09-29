@@ -56,7 +56,7 @@ class ReportTests(unittest.TestCase):
                 artifact = root / f"idle-cpu-{editor['id']}"
                 artifact.mkdir()
                 (artifact / "results.json").write_text(json.dumps(sample(editor["id"])))
-            self.assertEqual(len(report.load_results(root)), 10)
+            self.assertEqual(len(report.load_results(root)), len(report.EDITORS))
 
     def test_builds_per_editor_downloads_and_provenance(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -66,9 +66,9 @@ class ReportTests(unittest.TestCase):
             page = (output / "index.html").read_text()
             report_json = json.loads((output / "report.json").read_text())
             self.assertIn("125.00%", page)
-            self.assertIn("All 10 editors completed", page)
+            self.assertIn(f"All {len(report.EDITORS)} editors completed", page)
             self.assertIn("github.com/example/run/1", page)
-            self.assertEqual(len(report_json["editors"]), 10)
+            self.assertEqual(len(report_json["editors"]), len(report.EDITORS))
             self.assertTrue((output / "raw/lvce.json").is_file())
 
     def test_median_chart_maps_lower_values_to_the_bottom(self):
