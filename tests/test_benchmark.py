@@ -16,7 +16,12 @@ class CursorBenchmarkTests(unittest.TestCase):
 
     def test_cursor_command_uses_an_isolated_profile_and_skips_welcome(self):
         with tempfile.TemporaryDirectory() as temporary:
-            command = benchmark.command_for(self.editor, Path(temporary))
+            root = Path(temporary)
+            binary = root / ".tmp/apps/cursor/usr/share/cursor/cursor"
+            binary.parent.mkdir(parents=True)
+            binary.touch()
+            with mock.patch.object(benchmark, "ROOT", root):
+                command = benchmark.command_for(self.editor, root / "home")
         self.assertIn("--user-data-dir", command)
         self.assertIn("--skip-welcome", command)
         self.assertIn("--skip-release-notes", command)

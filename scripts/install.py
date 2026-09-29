@@ -25,7 +25,10 @@ def checksum(path):
 def download(entry, archive):
     if not archive.exists():
         print(f"Downloading {entry['id']} {entry['version']}", flush=True)
-        urllib.request.urlretrieve(entry["url"], archive)
+        # The Cursor CDN rejects urllib's default user agent with HTTP 403.
+        request = urllib.request.Request(entry["url"], headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request) as response, archive.open("wb") as destination:
+            shutil.copyfileobj(response, destination)
     actual = checksum(archive)
     if actual != entry["sha256"]:
         raise ValueError(f"Checksum mismatch for {entry['id']}: {actual}")
