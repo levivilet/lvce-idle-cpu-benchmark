@@ -18,7 +18,7 @@ concurrency:
 jobs:
   benchmark:
     name: Benchmark (${{ matrix.editor }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -81,7 +81,7 @@ jobs:
     name: benchmark
     needs: benchmark
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - name: Run accounting tests
@@ -111,7 +111,7 @@ jobs:
     name: Deploy Pages
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [benchmark, test]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       pages: write
       id-token: write
