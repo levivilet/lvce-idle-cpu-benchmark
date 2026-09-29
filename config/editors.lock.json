@@ -90,6 +90,6 @@
     "sha256": null,
     "binary": "geany",
     "package": "geany",
-    "notes": "Installed from the pinned Ubuntu 24.04 runner image package source."
+    "notes": "Installed from the Ubuntu 26.04 runner image package source."
   }
 ]
