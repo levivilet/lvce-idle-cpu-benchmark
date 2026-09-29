@@ -237,7 +237,7 @@ def main():
     parser.add_argument("--editor", required=True)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--settle-seconds", type=float, default=10)
-    parser.add_argument("--sample-seconds", type=float, default=10)
+    parser.add_argument("--sample-seconds", type=float, default=180)
     parser.add_argument("--output", type=Path, default=ROOT / "results/results.json")
     args = parser.parse_args()
     if args.repeats < 1 or args.settle_seconds < 0 or args.sample_seconds <= 0:
