@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import signal
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -15,6 +16,14 @@ from metrics import aggregate_cpu, measure_process_tree, read_cpu_stat, utilizat
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "config/editors.lock.json"
+CURSOR_WELCOME_VALUES = {
+    "cursorai/donotchange/privacyMode": "true",
+    "workbench.services.onFirstStartupService.isVeryFirstTime": "false",
+    "cursorAuth/stripeMembershipType": "free",
+    "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser": json.dumps(
+        {"authenticationSettings": {"githubLoggedIn": False}}, separators=(",", ":")
+    ),
+}
 
 
 def load_editor(editor_id):
@@ -31,13 +40,15 @@ def command_for(editor, home):
         return [editor["binary"]]
     if not binary.exists():
         raise FileNotFoundError(f"install first: {binary}")
-    common = ["--disable-gpu"] if editor["id"] in {"lvce", "vscode", "basic-electron", "theia", "atom"} else []
-    if editor["id"] in {"lvce", "vscode", "theia", "atom", "basic-electron"}:
+    common = ["--disable-gpu"] if editor["id"] in {"lvce", "vscode", "cursor", "basic-electron", "theia", "atom"} else []
+    if editor["id"] in {"lvce", "vscode", "cursor", "theia", "atom", "basic-electron"}:
         common += ["--no-sandbox"]
-    if editor["id"] in {"lvce", "vscode"}:
+    if editor["id"] in {"lvce", "vscode", "cursor"}:
         common += ["--user-data-dir", str(home / "profile")]
     if editor["id"] == "vscode":
         common += ["--disable-extensions", "--skip-welcome", "--skip-release-notes"]
+    if editor["id"] == "cursor":
+        common += ["--disable-extensions", "--disable-workspace-trust", "--skip-welcome", "--skip-release-notes", "--new-window"]
     if editor["id"] == "basic-electron":
         common += ["--ozone-platform=x11", str(ROOT / editor["app"])]
     if editor["id"] == "zed":
@@ -52,6 +63,87 @@ def command_for(editor, home):
         # Lapce launches a detached child unless --wait is supplied.
         common += ["--new", "--wait"]
     return [str(binary), *common]
+
+
+def terminate_process_group(process):
+    if not process:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("editor process did not stop")
+
+
+def prepare_cursor_profile(editor, home, environment, stdout, stderr):
+    """Initialize Cursor once, then seed its version-specific welcome state."""
+    database = home / "profile/User/globalStorage/state.vscdb"
+    if not database.exists():
+        workspace = home / "bootstrap-workspace"
+        workspace.mkdir()
+        process = None
+        try:
+            with stdout.open("w") as stdout_file, stderr.open("w") as stderr_file:
+                process = subprocess.Popen(
+                    [*command_for(editor, home), str(workspace)], cwd=home,
+                    env=environment, stdout=stdout_file, stderr=stderr_file,
+                    start_new_session=True,
+                )
+                deadline = time.monotonic() + 30
+                while not database.exists() and time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        raise RuntimeError(f"Cursor exited while creating its profile ({process.returncode})")
+                    time.sleep(0.25)
+                if not database.exists():
+                    raise RuntimeError("Cursor did not create its profile database")
+        finally:
+            terminate_process_group(process)
+
+    with sqlite3.connect(database, timeout=10) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(ItemTable)")}
+        if not {"key", "value"}.issubset(columns):
+            raise RuntimeError("Cursor profile database has no compatible ItemTable")
+        connection.executemany(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+            CURSOR_WELCOME_VALUES.items(),
+        )
+        actual = dict(connection.execute(
+            "SELECT key, value FROM ItemTable WHERE key IN (%s)" % ",".join("?" for _ in CURSOR_WELCOME_VALUES),
+            tuple(CURSOR_WELCOME_VALUES),
+        ))
+        if actual != CURSOR_WELCOME_VALUES:
+            raise RuntimeError("Cursor profile welcome state was not saved")
+
+
+def wait_for_cursor_workbench(fixture, timeout=30):
+    """Require a visible Cursor window whose title names the opened fixture."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        windows = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--name", fixture.name],
+            capture_output=True, text=True, check=False,
+        )
+        if windows.returncode == 0 and windows.stdout.strip():
+            for window_id in windows.stdout.splitlines():
+                title = subprocess.run(
+                    ["xdotool", "getwindowname", window_id],
+                    capture_output=True, text=True, check=False,
+                )
+                if title.returncode == 0 and fixture.name in title.stdout:
+                    return
+        time.sleep(0.5)
+    raise RuntimeError(f"Cursor did not show the benchmark fixture {fixture.name}")
 
 
 def cgroup_measurement(editor, elapsed):
@@ -108,13 +200,21 @@ def trial(editor, settle_seconds, sample_seconds):
         stderr_path = home / "stderr.log"
         process = None
         try:
+            if editor["id"] == "cursor":
+                prepare_cursor_profile(editor, home, environment,
+                                       home / "cursor-bootstrap.stdout.log",
+                                       home / "cursor-bootstrap.stderr.log")
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
                 process = subprocess.Popen(command, cwd=home, env=environment,
                                            stdout=stdout, stderr=stderr,
                                            start_new_session=True)
+            if editor["id"] == "cursor":
+                wait_for_cursor_workbench(fixture)
             time.sleep(settle_seconds)
             if process.poll() is not None:
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
+            if editor["id"] == "cursor":
+                wait_for_cursor_workbench(fixture, timeout=1)
             measurement = cgroup_measurement(editor, sample_seconds)
             if measurement is None:
                 measurement = process_measurement(process, sample_seconds)
@@ -129,19 +229,7 @@ def trial(editor, settle_seconds, sample_seconds):
                 "stderr": stderr_path.read_text(errors="replace")[-4000:],
             }
         finally:
-            if process:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    process.wait(timeout=5)
+            terminate_process_group(process)
 
 
 def main():
