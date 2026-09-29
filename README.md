@@ -53,13 +53,16 @@ bash scripts/run.sh --editor lvce --repeats 3
 python3 -m unittest discover -s tests
 ```
 
+Local trials use a 180-second sample by default. Pass `--sample-seconds` to
+override the capture duration for a run.
+
 Use `python3 scripts/benchmark.py --help` for interval and editor options.
 `CPU_CGROUP_PATH` can point at a readable cgroup directory containing
 `cpu.stat`; otherwise the process-tree sampler is selected automatically.
 
 ## CI
 
-Every CI trial measures idle CPU for 60 seconds. Pull requests run one trial per
+Every CI trial measures idle CPU for 180 seconds. Pull requests run one trial per
 locked editor after 5 seconds of settling, then run the accounting tests. Pushes,
 scheduled runs, and manual runs use three fresh trials per editor, each after
 10 seconds of settling, and upload raw JSON artifacts. The workflow intentionally does not claim

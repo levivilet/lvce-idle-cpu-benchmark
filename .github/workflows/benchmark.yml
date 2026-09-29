@@ -66,9 +66,9 @@ jobs:
       - name: Measure idle CPU
         run: |
           if [[ "${{ github.event_name }}" == pull_request ]]; then
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 60
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 180
           else
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 60
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 180
           fi
       - uses: actions/upload-artifact@v5
         if: always()
