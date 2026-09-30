@@ -1,4 +1,4 @@
-name: Idle CPU benchmark
+name: Desktop typing benchmark
 
 on:
   push:
@@ -63,12 +63,12 @@ jobs:
         with:
           path: ${{ steps.archive.outputs.path }}
           key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.archive.outputs.key }}
-      - name: Measure idle CPU
+      - name: Measure CPU and memory while typing
         run: |
           if [[ "${{ github.event_name }}" == pull_request ]]; then
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 180
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 180 --cadence-seconds 1
           else
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 180
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 180 --cadence-seconds 1
           fi
       - uses: actions/upload-artifact@v5
         if: always()

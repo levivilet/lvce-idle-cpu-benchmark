@@ -1,8 +1,9 @@
-"""Measure idle CPU time for one installed editor."""
+"""Measure process-tree CPU and memory while typing in one installed editor."""
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -12,7 +13,8 @@ import subprocess
 import tempfile
 import time
 
-from metrics import aggregate_cpu, measure_process_tree, read_cpu_stat, utilization_percent
+from metrics import process_tree, process_tree_memory_kb, summarize_memory, ticks_to_usec, utilization_percent
+from input_driver import expected_text, make_input, type_at_cadence
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "config/editors.lock.json"
@@ -146,35 +148,59 @@ def wait_for_cursor_workbench(fixture, timeout=30):
     raise RuntimeError(f"Cursor did not show the benchmark fixture {fixture.name}")
 
 
-def cgroup_measurement(editor, elapsed):
-    path = os.environ.get("CPU_CGROUP_PATH")
-    if not path:
-        return None
-    stat = Path(path) / "cpu.stat"
-    before = read_cpu_stat(stat)
+def typing_measurement(process, keyboard, fixture, duration_seconds, cadence_seconds):
+    """Type into the editor while sampling its complete process tree."""
     started = time.monotonic()
-    time.sleep(elapsed)
-    actual_elapsed = time.monotonic() - started
-    after = read_cpu_stat(stat)
-    result = aggregate_cpu(before, after, actual_elapsed)
-    result["source"] = "cgroup-cpu.stat"
-    return result
+    previous = process_tree(process.pid)
+    tick_total = 0
+    memory_samples = []
 
+    def sample(elapsed):
+        nonlocal previous, tick_total
+        if process.poll() is not None:
+            raise RuntimeError(f"editor exited during typing ({process.returncode})")
+        current = process_tree(process.pid)
+        for pid, ticks in current.items():
+            if pid in previous:
+                delta = ticks - previous[pid]
+                if delta < 0:
+                    raise ValueError("process CPU counter moved backwards")
+                tick_total += delta
+        previous = current
+        memory_samples.append((elapsed, process_tree_memory_kb(process.pid)))
 
-def process_measurement(process, elapsed):
-    started = time.monotonic()
-    cpu_usec = measure_process_tree(process.pid, elapsed)
-    actual_elapsed = time.monotonic() - started
+    characters = expected_text(math.ceil(duration_seconds / cadence_seconds))
+    offsets = type_at_cadence(characters, cadence_seconds, duration_seconds,
+                              keyboard.type_character, sample)
+    elapsed = time.monotonic() - started
+    keyboard.save()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and fixture.read_text(errors="replace") != characters:
+        time.sleep(.1)
+    if fixture.read_text(errors="replace") != characters:
+        raise RuntimeError("saved editor contents did not match the typed characters")
+    if process.poll() is not None:
+        raise RuntimeError(f"editor exited during typing ({process.returncode})")
+    memory = summarize_memory(memory_samples)
+    cpu_usec = ticks_to_usec(tick_total, os.sysconf("SC_CLK_TCK"))
     return {
         "cpuUsec": cpu_usec,
-        "elapsedSeconds": actual_elapsed,
-        "utilizationPercent": utilization_percent(cpu_usec, actual_elapsed),
+        "cpuTicks": tick_total,
+        "ticksPerSecond": os.sysconf("SC_CLK_TCK"),
+        "elapsedSeconds": elapsed,
+        "utilizationPercent": utilization_percent(cpu_usec, elapsed),
         "source": "proc-process-tree",
+        **memory,
+        "rssSamplesKb": memory_samples,
+        "inputCount": len(offsets),
+        "inputOffsetsSeconds": offsets,
+        "cadenceSeconds": cadence_seconds,
+        "savedContentVerified": True,
     }
 
 
-def trial(editor, settle_seconds, sample_seconds):
-    with tempfile.TemporaryDirectory(prefix=f"idle-cpu-{editor['id']}-") as directory:
+def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds):
+    with tempfile.TemporaryDirectory(prefix=f"typing-cpu-{editor['id']}-") as directory:
         home = Path(directory) / "home"
         for name in ("config", "data", "cache", "state"):
             (home / name).mkdir(parents=True)
@@ -189,12 +215,17 @@ def trial(editor, settle_seconds, sample_seconds):
             "LIBGL_ALWAYS_SOFTWARE": "1",
             "GALLIUM_DRIVER": "llvmpipe",
             "ZED_ALLOW_EMULATED_GPU": "1",
-            "ELECTRON_OZONE_PLATFORM_HINT": "x11",
+            "ELECTRON_OZONE_PLATFORM_HINT": "wayland" if input_driver == "ydotool" else "x11",
         }
-        fixture = home / "idle-cpu.txt"
-        fixture.write_text("Idle CPU benchmark fixture.\n")
+        fixture = home / "typing-cpu.txt"
+        fixture.write_text("Typing CPU benchmark fixture.\n")
         command = command_for(editor, home)
-        if editor["id"] != "theia":
+        if editor["id"] == "basic-electron" and input_driver == "ydotool":
+            command.remove("--ozone-platform=x11")
+            command.append("--ozone-platform=wayland")
+        if editor["id"] == "eclipse":
+            command.extend(["--launcher.openFile", str(fixture)])
+        else:
             command.append(str(fixture))
         stdout_path = home / "stdout.log"
         stderr_path = home / "stderr.log"
@@ -215,12 +246,13 @@ def trial(editor, settle_seconds, sample_seconds):
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
             if editor["id"] == "cursor":
                 wait_for_cursor_workbench(fixture, timeout=1)
-            measurement = cgroup_measurement(editor, sample_seconds)
-            if measurement is None:
-                measurement = process_measurement(process, sample_seconds)
+            keyboard = make_input(input_driver, fixture.name)
+            keyboard.clear()
+            measurement = typing_measurement(process, keyboard, fixture,
+                                             sample_seconds, cadence_seconds)
             measurement.update({"valid": True, "pid": process.pid})
             return measurement
-        except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
+        except (FileNotFoundError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             return {
                 "valid": False,
                 "error": str(error),
@@ -238,21 +270,27 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--settle-seconds", type=float, default=10)
     parser.add_argument("--sample-seconds", type=float, default=180)
+    parser.add_argument("--cadence-seconds", type=float, default=1)
+    parser.add_argument("--input-driver", choices=("xdotool", "ydotool"), default="xdotool")
     parser.add_argument("--output", type=Path, default=ROOT / "results/results.json")
     args = parser.parse_args()
-    if args.repeats < 1 or args.settle_seconds < 0 or args.sample_seconds <= 0:
-        parser.error("repeats must be positive; sample interval must be positive")
+    if args.repeats < 1 or args.settle_seconds < 0 or args.sample_seconds <= 0 or args.cadence_seconds <= 0:
+        parser.error("repeats must be positive; duration and typing cadence must be positive")
     editor = load_editor(args.editor)
     results = []
     for repeat in range(args.repeats):
         print(f"Trial {repeat + 1}/{args.repeats}: {args.editor}", flush=True)
-        result = trial(editor, args.settle_seconds, args.sample_seconds)
+        result = trial(editor, args.settle_seconds, args.sample_seconds,
+                       args.input_driver, args.cadence_seconds)
         result["repeat"] = repeat + 1
         results.append(result)
     payload = {
         "editor": editor,
-        "protocol": {"settleSeconds": args.settle_seconds, "sampleSeconds": args.sample_seconds,
-                      "definition": "100% is one fully busy logical CPU", "descendants": True},
+        "protocol": {"settleSeconds": args.settle_seconds, "typingDurationSeconds": args.sample_seconds,
+                      "typingCadenceSeconds": args.cadence_seconds, "inputDriver": args.input_driver,
+                      "definition": "100% is one fully busy logical CPU",
+                      "memoryDefinition": "sum of resident set size for the editor process tree",
+                      "descendants": True},
         "host": {"platform": platform.platform(), "machine": platform.machine(),
                  "python": platform.python_version(), "cpuCount": os.cpu_count()},
         "trials": results,
