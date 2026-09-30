@@ -8,7 +8,10 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 
-from metrics import CpuStat, aggregate_cpu, counter_delta, measure_process_tree, utilization_percent
+from metrics import (
+    CpuStat, aggregate_cpu, counter_delta, measure_process_tree, summarize_memory,
+    utilization_percent,
+)
 
 
 class MetricsTest(unittest.TestCase):
@@ -38,6 +41,21 @@ class MetricsTest(unittest.TestCase):
                 read_cpu_stat(path)
         with self.assertRaises(ValueError):
             counter_delta(CpuStat(10, 8, 2), CpuStat(11, 10, 3))
+
+    def test_memory_summary_uses_time_weighted_average_and_peak(self):
+        result = summarize_memory([(0, 10), (1, 20), (3, 30)])
+        self.assertAlmostEqual(result["averageRssKb"], 50 / 3)
+        self.assertEqual(result["peakRssKb"], 30)
+        self.assertEqual(result["memorySamples"], 3)
+        self.assertEqual(result["memoryElapsedSeconds"], 3)
+
+    def test_memory_summary_rejects_zero_duration_and_invalid_samples(self):
+        with self.assertRaisesRegex(ValueError, "at least two"):
+            summarize_memory([(0, 10)])
+        with self.assertRaisesRegex(ValueError, "timestamps"):
+            summarize_memory([(1, 10), (1, 20)])
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            summarize_memory([(0, -1), (1, 2)])
 
     def test_controlled_busy_process_has_nonzero_descendant_cpu(self):
         process = subprocess.Popen([sys.executable, "-c", "while True: pass"])

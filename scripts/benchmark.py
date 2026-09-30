@@ -1,8 +1,9 @@
-"""Measure idle CPU time for one installed editor."""
+"""Measure process-tree CPU and memory while typing in one installed editor."""
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -12,7 +13,8 @@ import subprocess
 import tempfile
 import time
 
-from metrics import aggregate_cpu, measure_process_tree, read_cpu_stat, utilization_percent
+from metrics import process_tree, process_tree_memory_kb, summarize_memory, ticks_to_usec, utilization_percent
+from input_driver import expected_text, make_input, type_at_cadence
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "config/editors.lock.json"
@@ -54,9 +56,7 @@ def command_for(editor, home):
     if editor["id"] == "zed":
         common += ["--user-data-dir", str(home / "profile")]
     if editor["id"] == "eclipse":
-        common += ["-nosplash", "-data", str(home / "workspace"), "-application", "org.eclipse.ui.ide.workbench"]
-    if editor["id"] == "idea":
-        common += ["nosplash", "dontReopenProjects", "-e"]
+        common += ["-nosplash", "-data", str(home / "eclipse-workspace"), "-application", "org.eclipse.ui.ide.workbench"]
     if editor["id"] == "atom":
         common += ["--new-window"]
     if editor["id"] == "lapce":
@@ -146,38 +146,70 @@ def wait_for_cursor_workbench(fixture, timeout=30):
     raise RuntimeError(f"Cursor did not show the benchmark fixture {fixture.name}")
 
 
-def cgroup_measurement(editor, elapsed):
-    path = os.environ.get("CPU_CGROUP_PATH")
-    if not path:
-        return None
-    stat = Path(path) / "cpu.stat"
-    before = read_cpu_stat(stat)
+def typing_measurement(process, keyboard, fixture, duration_seconds, cadence_seconds):
+    """Type into the editor while sampling its complete process tree."""
     started = time.monotonic()
-    time.sleep(elapsed)
-    actual_elapsed = time.monotonic() - started
-    after = read_cpu_stat(stat)
-    result = aggregate_cpu(before, after, actual_elapsed)
-    result["source"] = "cgroup-cpu.stat"
-    return result
+    previous = process_tree(process.pid)
+    tick_total = 0
+    memory_samples = []
 
+    def sample(elapsed):
+        nonlocal previous, tick_total
+        if process.poll() is not None:
+            raise RuntimeError(f"editor exited during typing ({process.returncode})")
+        current = process_tree(process.pid)
+        for pid, ticks in current.items():
+            if pid in previous:
+                delta = ticks - previous[pid]
+                if delta < 0:
+                    raise ValueError("process CPU counter moved backwards")
+                tick_total += delta
+        previous = current
+        memory_samples.append((elapsed, process_tree_memory_kb(process.pid)))
 
-def process_measurement(process, elapsed):
-    started = time.monotonic()
-    cpu_usec = measure_process_tree(process.pid, elapsed)
-    actual_elapsed = time.monotonic() - started
+    characters = expected_text(math.ceil(duration_seconds / cadence_seconds))
+    offsets = type_at_cadence(characters, cadence_seconds, duration_seconds,
+                              keyboard.type_character, sample)
+    elapsed = time.monotonic() - started
+    keyboard.save()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and fixture.read_text(errors="replace") != characters:
+        time.sleep(.1)
+    saved_text = fixture.read_text(errors="replace")
+    if saved_text not in {characters, characters + "\n", characters + "\r\n"}:
+        raise RuntimeError(
+            "saved editor contents did not match the typed characters "
+            f"(expected {characters!r}, found {saved_text!r})"
+        )
+    if process.poll() is not None:
+        raise RuntimeError(f"editor exited during typing ({process.returncode})")
+    memory = summarize_memory(memory_samples)
+    cpu_usec = ticks_to_usec(tick_total, os.sysconf("SC_CLK_TCK"))
     return {
         "cpuUsec": cpu_usec,
-        "elapsedSeconds": actual_elapsed,
-        "utilizationPercent": utilization_percent(cpu_usec, actual_elapsed),
+        "cpuTicks": tick_total,
+        "ticksPerSecond": os.sysconf("SC_CLK_TCK"),
+        "elapsedSeconds": elapsed,
+        "utilizationPercent": utilization_percent(cpu_usec, elapsed),
         "source": "proc-process-tree",
+        **memory,
+        "rssSamplesKb": memory_samples,
+        "inputCount": len(offsets),
+        "inputOffsetsSeconds": offsets,
+        "cadenceSeconds": cadence_seconds,
+        "savedContentVerified": True,
+        "savedTrailingNewline": saved_text.endswith(("\n", "\r")),
     }
 
 
-def trial(editor, settle_seconds, sample_seconds):
-    with tempfile.TemporaryDirectory(prefix=f"idle-cpu-{editor['id']}-") as directory:
+def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds):
+    with tempfile.TemporaryDirectory(prefix=f"typing-cpu-{editor['id']}-") as directory:
         home = Path(directory) / "home"
         for name in ("config", "data", "cache", "state"):
             (home / name).mkdir(parents=True)
+        runtime = home / "runtime"
+        runtime.mkdir()
+        runtime.chmod(0o700)
         environment = {
             **os.environ,
             "HOME": str(home),
@@ -185,16 +217,35 @@ def trial(editor, settle_seconds, sample_seconds):
             "XDG_DATA_HOME": str(home / "data"),
             "XDG_CACHE_HOME": str(home / "cache"),
             "XDG_STATE_HOME": str(home / "state"),
+            "XDG_RUNTIME_DIR": str(runtime),
             "ELECTRON_NO_ATTACH_CONSOLE": "1",
             "LIBGL_ALWAYS_SOFTWARE": "1",
             "GALLIUM_DRIVER": "llvmpipe",
             "ZED_ALLOW_EMULATED_GPU": "1",
-            "ELECTRON_OZONE_PLATFORM_HINT": "x11",
+            "ELECTRON_OZONE_PLATFORM_HINT": "wayland" if input_driver == "ydotool" else "x11",
         }
-        fixture = home / "idle-cpu.txt"
-        fixture.write_text("Idle CPU benchmark fixture.\n")
+        workspace = home / "typing-cpu"
+        workspace.mkdir()
+        fixture = workspace / "typing-cpu.txt"
+        fixture.write_text("Typing CPU benchmark fixture.\n")
         command = command_for(editor, home)
-        if editor["id"] != "theia":
+        if editor["id"] == "eclipse":
+            workspace_index = command.index("-data") + 1
+            command[workspace_index] = str(fixture.parent)
+        if editor["id"] == "basic-electron" and input_driver == "ydotool":
+            command.remove("--ozone-platform=x11")
+            command.append("--ozone-platform=wayland")
+        if editor["id"] == "eclipse":
+            command[1:1] = ["--launcher.openFile", str(fixture)]
+        elif editor["id"] == "idea":
+            command.extend([str(fixture.parent), str(fixture)])
+            environment["JAVA_TOOL_OPTIONS"] = (
+                environment.get("JAVA_TOOL_OPTIONS", "")
+                + f" -Djava.util.prefs.userRoot={home / 'java-preferences'}"
+            )
+        elif editor["id"] == "theia":
+            command.append(str(fixture.parent))
+        else:
             command.append(str(fixture))
         stdout_path = home / "stdout.log"
         stderr_path = home / "stderr.log"
@@ -205,7 +256,7 @@ def trial(editor, settle_seconds, sample_seconds):
                                        home / "cursor-bootstrap.stdout.log",
                                        home / "cursor-bootstrap.stderr.log")
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
-                process = subprocess.Popen(command, cwd=home, env=environment,
+                process = subprocess.Popen(command, cwd=workspace, env=environment,
                                            stdout=stdout, stderr=stderr,
                                            start_new_session=True)
             if editor["id"] == "cursor":
@@ -215,12 +266,59 @@ def trial(editor, settle_seconds, sample_seconds):
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
             if editor["id"] == "cursor":
                 wait_for_cursor_workbench(fixture, timeout=1)
-            measurement = cgroup_measurement(editor, sample_seconds)
-            if measurement is None:
-                measurement = process_measurement(process, sample_seconds)
+            window_patterns = {
+                "atom": "typing-cpu",
+                "eclipse": "Eclipse SDK",
+                "idea": ("IntelliJ", "Data Sharing", "typing-cpu"),
+                "lapce": "Lapce",
+                "lvce": "typing-cpu",
+                "theia": "typing-cpu",
+            }
+            click_positions = {
+                "basic-electron": (200, 160),
+                "lapce": (500, 150),
+                "lvce": (200, 160),
+                "theia": (500, 150),
+            }
+            keyboard = make_input(input_driver, fixture.name,
+                                  window_patterns.get(editor["id"], fixture.name),
+                                  click_positions.get(editor["id"], (800, 250)))
+            if editor["id"] == "idea":
+                keyboard.accept_idea_onboarding()
+                keyboard.accept_idea_open_project()
+            if editor["id"] == "eclipse":
+                keyboard.close_welcome()
+                keyboard.click_editor((500, 155))
+            if editor["id"] == "theia":
+                keyboard.press_key("Return")
+                time.sleep(.5)
+            if editor["id"] == "idea":
+                keyboard.open_idea_file(fixture.name)
+            elif editor["id"] == "zed":
+                keyboard.open_file(fixture.name)
+            if editor["id"] == "idea":
+                keyboard.click_editor((800, 250))
+            if editor["id"] == "theia":
+                keyboard.open_selected_file()
+            if editor["id"] == "theia":
+                keyboard.click_editor(click_positions["theia"])
+            keyboard.clear()
+            time.sleep(.5)
+            measurement = typing_measurement(process, keyboard, fixture,
+                                             sample_seconds, cadence_seconds)
             measurement.update({"valid": True, "pid": process.pid})
             return measurement
-        except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
+        except (FileNotFoundError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            diagnostics = ROOT / "results" / "diagnostics"
+            diagnostics.mkdir(parents=True, exist_ok=True)
+            prefix = diagnostics / f"{editor['id']}-{process.pid if process else 'startup'}"
+            prefix.with_suffix(".txt").write_text(fixture.read_text(errors="replace"))
+            if input_driver == "xdotool":
+                try:
+                    subprocess.run(["import", "-window", "root", str(prefix.with_suffix(".png"))],
+                                   capture_output=True, timeout=5, check=False)
+                except (OSError, subprocess.SubprocessError):
+                    pass
             return {
                 "valid": False,
                 "error": str(error),
@@ -238,21 +336,27 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--settle-seconds", type=float, default=10)
     parser.add_argument("--sample-seconds", type=float, default=180)
+    parser.add_argument("--cadence-seconds", type=float, default=1)
+    parser.add_argument("--input-driver", choices=("xdotool", "ydotool"), default="xdotool")
     parser.add_argument("--output", type=Path, default=ROOT / "results/results.json")
     args = parser.parse_args()
-    if args.repeats < 1 or args.settle_seconds < 0 or args.sample_seconds <= 0:
-        parser.error("repeats must be positive; sample interval must be positive")
+    if args.repeats < 1 or args.settle_seconds < 0 or args.sample_seconds <= 0 or args.cadence_seconds <= 0:
+        parser.error("repeats must be positive; duration and typing cadence must be positive")
     editor = load_editor(args.editor)
     results = []
     for repeat in range(args.repeats):
         print(f"Trial {repeat + 1}/{args.repeats}: {args.editor}", flush=True)
-        result = trial(editor, args.settle_seconds, args.sample_seconds)
+        result = trial(editor, args.settle_seconds, args.sample_seconds,
+                       args.input_driver, args.cadence_seconds)
         result["repeat"] = repeat + 1
         results.append(result)
     payload = {
         "editor": editor,
-        "protocol": {"settleSeconds": args.settle_seconds, "sampleSeconds": args.sample_seconds,
-                      "definition": "100% is one fully busy logical CPU", "descendants": True},
+        "protocol": {"settleSeconds": args.settle_seconds, "typingDurationSeconds": args.sample_seconds,
+                      "typingCadenceSeconds": args.cadence_seconds, "inputDriver": args.input_driver,
+                      "definition": "100% is one fully busy logical CPU",
+                      "memoryDefinition": "sum of resident set size for the editor process tree",
+                      "descendants": True},
         "host": {"platform": platform.platform(), "machine": platform.machine(),
                  "python": platform.python_version(), "cpuCount": os.cpu_count()},
         "trials": results,
