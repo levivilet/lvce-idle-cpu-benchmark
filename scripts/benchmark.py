@@ -238,7 +238,11 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
         if editor["id"] == "eclipse":
             command[1:1] = ["--launcher.openFile", str(fixture)]
         elif editor["id"] == "idea":
-            command.append(str(fixture))
+            command.extend([str(fixture.parent), str(fixture)])
+            environment["JAVA_TOOL_OPTIONS"] = (
+                environment.get("JAVA_TOOL_OPTIONS", "")
+                + f" -Djava.util.prefs.userRoot={home / 'java-preferences'}"
+            )
         elif editor["id"] == "theia":
             command.append(str(fixture.parent))
         else:
