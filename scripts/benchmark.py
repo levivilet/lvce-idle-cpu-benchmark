@@ -177,8 +177,12 @@ def typing_measurement(process, keyboard, fixture, duration_seconds, cadence_sec
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and fixture.read_text(errors="replace") != characters:
         time.sleep(.1)
-    if fixture.read_text(errors="replace") != characters:
-        raise RuntimeError("saved editor contents did not match the typed characters")
+    saved_text = fixture.read_text(errors="replace")
+    if saved_text not in {characters, characters + "\n", characters + "\r\n"}:
+        raise RuntimeError(
+            "saved editor contents did not match the typed characters "
+            f"(expected {characters!r}, found {saved_text[:120]!r})"
+        )
     if process.poll() is not None:
         raise RuntimeError(f"editor exited during typing ({process.returncode})")
     memory = summarize_memory(memory_samples)
@@ -196,6 +200,7 @@ def typing_measurement(process, keyboard, fixture, duration_seconds, cadence_sec
         "inputOffsetsSeconds": offsets,
         "cadenceSeconds": cadence_seconds,
         "savedContentVerified": True,
+        "savedTrailingNewline": saved_text.endswith(("\n", "\r")),
     }
 
 
@@ -204,6 +209,9 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
         home = Path(directory) / "home"
         for name in ("config", "data", "cache", "state"):
             (home / name).mkdir(parents=True)
+        runtime = home / "runtime"
+        runtime.mkdir()
+        runtime.chmod(0o700)
         environment = {
             **os.environ,
             "HOME": str(home),
@@ -211,13 +219,16 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             "XDG_DATA_HOME": str(home / "data"),
             "XDG_CACHE_HOME": str(home / "cache"),
             "XDG_STATE_HOME": str(home / "state"),
+            "XDG_RUNTIME_DIR": str(runtime),
             "ELECTRON_NO_ATTACH_CONSOLE": "1",
             "LIBGL_ALWAYS_SOFTWARE": "1",
             "GALLIUM_DRIVER": "llvmpipe",
             "ZED_ALLOW_EMULATED_GPU": "1",
             "ELECTRON_OZONE_PLATFORM_HINT": "wayland" if input_driver == "ydotool" else "x11",
         }
-        fixture = home / "typing-cpu.txt"
+        workspace = home / "typing-cpu"
+        workspace.mkdir()
+        fixture = workspace / "typing-cpu.txt"
         fixture.write_text("Typing CPU benchmark fixture.\n")
         command = command_for(editor, home)
         if editor["id"] == "basic-electron" and input_driver == "ydotool":
@@ -225,6 +236,8 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             command.append("--ozone-platform=wayland")
         if editor["id"] == "eclipse":
             command.extend(["--launcher.openFile", str(fixture)])
+        elif editor["id"] == "theia":
+            command.append(str(fixture.parent))
         else:
             command.append(str(fixture))
         stdout_path = home / "stdout.log"
@@ -236,7 +249,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                                        home / "cursor-bootstrap.stdout.log",
                                        home / "cursor-bootstrap.stderr.log")
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
-                process = subprocess.Popen(command, cwd=home, env=environment,
+                process = subprocess.Popen(command, cwd=workspace, env=environment,
                                            stdout=stdout, stderr=stderr,
                                            start_new_session=True)
             if editor["id"] == "cursor":
@@ -246,7 +259,23 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
             if editor["id"] == "cursor":
                 wait_for_cursor_workbench(fixture, timeout=1)
-            keyboard = make_input(input_driver, fixture.name)
+            window_patterns = {
+                "atom": "typing-cpu",
+                "idea": "typing-cpu",
+                "lapce": "Lapce",
+                "lvce": "typing-cpu",
+                "theia": "typing-cpu",
+            }
+            click_positions = {
+                "basic-electron": (200, 160),
+                "lapce": (500, 150),
+                "lvce": (200, 160),
+            }
+            keyboard = make_input(input_driver, fixture.name,
+                                  window_patterns.get(editor["id"], fixture.name),
+                                  click_positions.get(editor["id"], (800, 250)))
+            if editor["id"] in {"theia", "zed"}:
+                keyboard.open_file(fixture.name)
             keyboard.clear()
             measurement = typing_measurement(process, keyboard, fixture,
                                              sample_seconds, cadence_seconds)

@@ -9,32 +9,47 @@ import time
 class XdotoolInput:
     """Send input to the exact visible window containing the fixture name."""
 
-    def __init__(self, fixture_name: str, wait_seconds: float = 30):
+    def __init__(self, fixture_name: str, window_pattern: str | None = None,
+                 wait_seconds: float = 30, click_position: tuple[int, int] = (800, 250)):
         self.fixture_name = fixture_name
+        self.window_pattern = window_pattern or fixture_name
+        self.click_position = click_position
         deadline = time.monotonic() + wait_seconds
         while True:
             result = subprocess.run(
-                ["xdotool", "search", "--onlyvisible", "--name", fixture_name],
+                ["xdotool", "search", "--onlyvisible", "--name", self.window_pattern],
                 capture_output=True, text=True, check=False,
             )
             if result.returncode == 0 and result.stdout.strip():
                 break
             if time.monotonic() >= deadline:
-                raise RuntimeError(f"no visible editor window for {fixture_name}")
+                raise RuntimeError(f"no visible editor window matching {self.window_pattern}")
             time.sleep(.25)
         self.window_id = result.stdout.splitlines()[-1]
         subprocess.run(["xdotool", "windowfocus", "--sync", self.window_id], check=True)
-        subprocess.run(["xdotool", "mousemove", "--window", self.window_id, "200", "160"], check=True)
+        x, y = self.click_position
+        subprocess.run(["xdotool", "mousemove", "--window", self.window_id, str(x), str(y)], check=True)
         subprocess.run(["xdotool", "click", "--window", self.window_id, "1"], check=True)
         self._require_focus()
 
     def _require_focus(self) -> None:
-        result = subprocess.run(
+        focused = subprocess.run(
             ["xdotool", "getwindowfocus", "getwindowname"],
             capture_output=True, text=True, check=False,
         )
-        if result.returncode != 0 or self.fixture_name not in result.stdout:
-            raise RuntimeError(f"editor window lost focus for {self.fixture_name}")
+        if focused.returncode != 0 or self.window_pattern not in focused.stdout:
+            raise RuntimeError(f"editor window lost focus for {self.window_pattern}")
+
+    def open_file(self, filename: str) -> None:
+        self._require_focus()
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+p"], check=True)
+        subprocess.run(
+            ["xdotool", "type", "--clearmodifiers", "--delay", "0", "--", filename],
+            check=True,
+        )
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
+        time.sleep(.5)
+        self._require_focus()
 
     def clear(self) -> None:
         self._require_focus()
@@ -67,6 +82,11 @@ class YdotoolInput:
         self._run("key", "ctrl+a")
         self._run("key", "BackSpace")
 
+    def open_file(self, filename: str) -> None:
+        self._run("key", "ctrl+p")
+        self._run("type", "--key-delay", "0", "--", filename)
+        self._run("key", "Return")
+
     def type_character(self, character: str) -> None:
         self._run("type", "--key-delay", "0", "--", character)
 
@@ -74,9 +94,10 @@ class YdotoolInput:
         self._run("key", "ctrl+s")
 
 
-def make_input(driver: str, fixture_name: str):
+def make_input(driver: str, fixture_name: str, window_pattern: str | None = None,
+               click_position: tuple[int, int] = (800, 250)):
     if driver == "xdotool":
-        return XdotoolInput(fixture_name)
+        return XdotoolInput(fixture_name, window_pattern, click_position=click_position)
     if driver == "ydotool":
         return YdotoolInput()
     raise ValueError(f"unknown input driver: {driver}")

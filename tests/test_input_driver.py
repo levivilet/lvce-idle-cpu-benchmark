@@ -52,7 +52,7 @@ class InputDriverTests(unittest.TestCase):
             keyboard.clear()
         self.assertEqual(keyboard.window_id, "123")
         self.assertEqual(run.call_args_list[1].args[0], ["xdotool", "windowfocus", "--sync", "123"])
-        self.assertEqual(run.call_args_list[2].args[0], ["xdotool", "mousemove", "--window", "123", "200", "160"])
+        self.assertEqual(run.call_args_list[2].args[0], ["xdotool", "mousemove", "--window", "123", "800", "250"])
         self.assertEqual(run.call_args_list[4].args[0], ["xdotool", "getwindowfocus", "getwindowname"])
 
     def test_xdotool_driver_rejects_missing_fixture_window(self):
