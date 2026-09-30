@@ -38,7 +38,10 @@ class XdotoolInput:
             capture_output=True, text=True, check=False,
         )
         if focused.returncode != 0 or self.window_pattern not in focused.stdout:
-            raise RuntimeError(f"editor window lost focus for {self.window_pattern}")
+            active = focused.stdout.strip() if focused.returncode == 0 else "unknown"
+            raise RuntimeError(
+                f"editor window lost focus for {self.window_pattern} (active window: {active})"
+            )
 
     def open_file(self, filename: str, shortcut: str = "ctrl+p") -> None:
         self._require_focus()
@@ -47,8 +50,41 @@ class XdotoolInput:
             ["xdotool", "type", "--clearmodifiers", "--delay", "0", "--", filename],
             check=True,
         )
+        time.sleep(.5)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
         time.sleep(.5)
+        self._require_focus()
+
+    def press_key(self, key: str) -> None:
+        subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True)
+
+    def open_selected_file(self, shortcut: str = "ctrl+o") -> None:
+        self._require_focus()
+        subprocess.run(["xdotool", "key", "--clearmodifiers", shortcut], check=True)
+        deadline = time.monotonic() + 5
+        dialog_id = None
+        while time.monotonic() < deadline:
+            dialog = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--name", "^Open File$"],
+                capture_output=True, text=True, check=False,
+            )
+            if dialog.returncode == 0 and dialog.stdout.strip():
+                dialog_id = dialog.stdout.splitlines()[-1]
+                break
+            time.sleep(.1)
+        if dialog_id is None:
+            raise RuntimeError("editor did not show the open-file dialog")
+        subprocess.run(["xdotool", "windowfocus", "--sync", dialog_id], check=True)
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+o"], check=True)
+        time.sleep(.5)
+        self._require_focus()
+
+    def click_editor(self, position: tuple[int, int]) -> None:
+        self._require_focus()
+        x, y = position
+        subprocess.run(["xdotool", "mousemove", "--window", self.window_id,
+                        str(x), str(y)], check=True)
+        subprocess.run(["xdotool", "click", "--window", self.window_id, "1"], check=True)
         self._require_focus()
 
     def clear(self) -> None:
@@ -86,6 +122,16 @@ class YdotoolInput:
         self._run("key", shortcut)
         self._run("type", "--key-delay", "0", "--", filename)
         self._run("key", "Return")
+
+    def press_key(self, key: str) -> None:
+        self._run("key", key)
+
+    def open_selected_file(self, shortcut: str = "ctrl+o") -> None:
+        self._run("key", shortcut)
+        self._run("key", "Return")
+
+    def click_editor(self, position: tuple[int, int]) -> None:
+        del position
 
     def type_character(self, character: str) -> None:
         self._run("type", "--key-delay", "0", "--", character)

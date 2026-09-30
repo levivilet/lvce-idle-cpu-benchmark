@@ -271,13 +271,21 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 "basic-electron": (200, 160),
                 "lapce": (500, 150),
                 "lvce": (200, 160),
+                "theia": (500, 150),
             }
             keyboard = make_input(input_driver, fixture.name,
                                   window_patterns.get(editor["id"], fixture.name),
                                   click_positions.get(editor["id"], (800, 250)))
+            if editor["id"] == "theia":
+                keyboard.press_key("Return")
+                time.sleep(.5)
             open_shortcuts = {"idea": "ctrl+shift+n"}
-            if editor["id"] in {"idea", "theia", "zed"}:
+            if editor["id"] in {"idea", "zed"}:
                 keyboard.open_file(fixture.name, open_shortcuts.get(editor["id"], "ctrl+p"))
+            if editor["id"] == "theia":
+                keyboard.open_selected_file()
+            if editor["id"] == "theia":
+                keyboard.click_editor(click_positions["theia"])
             keyboard.clear()
             measurement = typing_measurement(process, keyboard, fixture,
                                              sample_seconds, cadence_seconds)
