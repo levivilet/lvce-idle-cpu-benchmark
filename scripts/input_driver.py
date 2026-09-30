@@ -128,8 +128,10 @@ class XdotoolInput:
 
     def close_welcome(self) -> None:
         self._require_focus()
-        subprocess.run(["xdotool", "mousemove", "132", "100"], check=True)
-        subprocess.run(["xdotool", "click", "1"], check=True)
+        # Eclipse's optional toolbar row shifts the Welcome close button.
+        for y in (100, 130):
+            subprocess.run(["xdotool", "mousemove", "132", str(y)], check=True)
+            subprocess.run(["xdotool", "click", "1"], check=True)
         time.sleep(.5)
         self._require_focus()
 
@@ -240,7 +242,13 @@ class XdotoolInput:
     def accept_idea_open_project(self) -> None:
         """Open a file launched in IDEA's simplified LightEdit mode as a project."""
         deadline = time.monotonic() + 30
+        trusted = False
         while time.monotonic() < deadline:
+            title = subprocess.run(["xdotool", "getwindowfocus", "getwindowname"],
+                                   capture_output=True, text=True, check=True).stdout.strip()
+            if not title and not trusted:
+                self.press_key("Return")
+                trusted = True
             prompt = self._visible_window("^Open in Project$")
             if prompt:
                 break
