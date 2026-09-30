@@ -56,9 +56,7 @@ def command_for(editor, home):
     if editor["id"] == "zed":
         common += ["--user-data-dir", str(home / "profile")]
     if editor["id"] == "eclipse":
-        common += ["-nosplash", "-data", str(home / "workspace"), "-application", "org.eclipse.ui.ide.workbench"]
-    if editor["id"] == "idea":
-        common += ["nosplash", "dontReopenProjects", "-e"]
+        common += ["-nosplash", "-data", str(home / "eclipse-workspace"), "-application", "org.eclipse.ui.ide.workbench"]
     if editor["id"] == "atom":
         common += ["--new-window"]
     if editor["id"] == "lapce":
@@ -235,7 +233,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             command.remove("--ozone-platform=x11")
             command.append("--ozone-platform=wayland")
         if editor["id"] == "eclipse":
-            command.extend(["--launcher.openFile", str(fixture)])
+            command[1:1] = ["--launcher.openFile", str(fixture)]
         elif editor["id"] in {"idea", "theia"}:
             command.append(str(fixture.parent))
         else:
@@ -261,8 +259,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 wait_for_cursor_workbench(fixture, timeout=1)
             window_patterns = {
                 "atom": "typing-cpu",
-                "eclipse": "Eclipse",
-                "idea": "IntelliJ",
+                "idea": ("IntelliJ", "Data Sharing", "typing-cpu"),
                 "lapce": "Lapce",
                 "lvce": "typing-cpu",
                 "theia": "typing-cpu",
@@ -276,12 +273,22 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             keyboard = make_input(input_driver, fixture.name,
                                   window_patterns.get(editor["id"], fixture.name),
                                   click_positions.get(editor["id"], (800, 250)))
+            if editor["id"] == "idea":
+                keyboard.accept_idea_onboarding()
+                time.sleep(10)
+                keyboard.click_editor((800, 250))
+            if editor["id"] == "eclipse":
+                keyboard.close_welcome()
+                keyboard.click_editor((500, 155))
             if editor["id"] == "theia":
                 keyboard.press_key("Return")
                 time.sleep(.5)
             open_shortcuts = {"idea": "ctrl+shift+n"}
             if editor["id"] in {"idea", "zed"}:
                 keyboard.open_file(fixture.name, open_shortcuts.get(editor["id"], "ctrl+p"))
+            if editor["id"] == "idea":
+                keyboard.press_key("Return")
+                time.sleep(1)
             if editor["id"] == "theia":
                 keyboard.open_selected_file()
             if editor["id"] == "theia":
