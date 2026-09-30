@@ -61,6 +61,20 @@ class InputDriverTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "no visible editor window"):
                 XdotoolInput("typing-cpu.txt", wait_seconds=0)
 
+    def test_open_file_uses_editor_specific_shortcut(self):
+        keyboard = XdotoolInput.__new__(XdotoolInput)
+        keyboard.window_pattern = "IntelliJ"
+        with mock.patch.object(keyboard, "_require_focus"), \
+                mock.patch("input_driver.subprocess.run") as run, \
+                mock.patch("input_driver.time.sleep"):
+            keyboard.open_file("typing-cpu.txt", "ctrl+shift+n")
+        self.assertEqual(run.call_args_list[0].args[0],
+                         ["xdotool", "key", "--clearmodifiers", "ctrl+shift+n"])
+        self.assertEqual(run.call_args_list[1].args[0][0:4],
+                         ["xdotool", "type", "--clearmodifiers", "--delay"])
+        self.assertEqual(run.call_args_list[2].args[0],
+                         ["xdotool", "key", "--clearmodifiers", "Return"])
+
 
 if __name__ == "__main__":
     unittest.main()

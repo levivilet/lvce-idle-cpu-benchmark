@@ -40,9 +40,9 @@ class XdotoolInput:
         if focused.returncode != 0 or self.window_pattern not in focused.stdout:
             raise RuntimeError(f"editor window lost focus for {self.window_pattern}")
 
-    def open_file(self, filename: str) -> None:
+    def open_file(self, filename: str, shortcut: str = "ctrl+p") -> None:
         self._require_focus()
-        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+p"], check=True)
+        subprocess.run(["xdotool", "key", "--clearmodifiers", shortcut], check=True)
         subprocess.run(
             ["xdotool", "type", "--clearmodifiers", "--delay", "0", "--", filename],
             check=True,
@@ -82,8 +82,8 @@ class YdotoolInput:
         self._run("key", "ctrl+a")
         self._run("key", "BackSpace")
 
-    def open_file(self, filename: str) -> None:
-        self._run("key", "ctrl+p")
+    def open_file(self, filename: str, shortcut: str = "ctrl+p") -> None:
+        self._run("key", shortcut)
         self._run("type", "--key-delay", "0", "--", filename)
         self._run("key", "Return")
 

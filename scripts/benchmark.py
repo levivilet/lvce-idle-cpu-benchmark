@@ -236,7 +236,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             command.append("--ozone-platform=wayland")
         if editor["id"] == "eclipse":
             command.extend(["--launcher.openFile", str(fixture)])
-        elif editor["id"] == "theia":
+        elif editor["id"] in {"idea", "theia"}:
             command.append(str(fixture.parent))
         else:
             command.append(str(fixture))
@@ -261,7 +261,8 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 wait_for_cursor_workbench(fixture, timeout=1)
             window_patterns = {
                 "atom": "typing-cpu",
-                "idea": "typing-cpu",
+                "eclipse": "Eclipse",
+                "idea": "IntelliJ",
                 "lapce": "Lapce",
                 "lvce": "typing-cpu",
                 "theia": "typing-cpu",
@@ -274,8 +275,9 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             keyboard = make_input(input_driver, fixture.name,
                                   window_patterns.get(editor["id"], fixture.name),
                                   click_positions.get(editor["id"], (800, 250)))
-            if editor["id"] in {"theia", "zed"}:
-                keyboard.open_file(fixture.name)
+            open_shortcuts = {"idea": "ctrl+shift+n"}
+            if editor["id"] in {"idea", "theia", "zed"}:
+                keyboard.open_file(fixture.name, open_shortcuts.get(editor["id"], "ctrl+p"))
             keyboard.clear()
             measurement = typing_measurement(process, keyboard, fixture,
                                              sample_seconds, cadence_seconds)
