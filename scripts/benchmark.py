@@ -179,7 +179,7 @@ def typing_measurement(process, keyboard, fixture, duration_seconds, cadence_sec
     if saved_text not in {characters, characters + "\n", characters + "\r\n"}:
         raise RuntimeError(
             "saved editor contents did not match the typed characters "
-            f"(expected {characters!r}, found {saved_text[:120]!r})"
+            f"(expected {characters!r}, found {saved_text!r})"
         )
     if process.poll() is not None:
         raise RuntimeError(f"editor exited during typing ({process.returncode})")
@@ -237,7 +237,9 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             command.append("--ozone-platform=wayland")
         if editor["id"] == "eclipse":
             command[1:1] = ["--launcher.openFile", str(fixture)]
-        elif editor["id"] in {"idea", "theia"}:
+        elif editor["id"] == "idea":
+            command.append(str(fixture))
+        elif editor["id"] == "theia":
             command.append(str(fixture.parent))
         else:
             command.append(str(fixture))
@@ -279,8 +281,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                                   click_positions.get(editor["id"], (800, 250)))
             if editor["id"] == "idea":
                 keyboard.accept_idea_onboarding()
-                time.sleep(10)
-                keyboard.click_editor((800, 250))
+                keyboard.accept_idea_open_project()
             if editor["id"] == "eclipse":
                 keyboard.close_welcome()
                 keyboard.click_editor((500, 155))
@@ -304,6 +305,16 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             measurement.update({"valid": True, "pid": process.pid})
             return measurement
         except (FileNotFoundError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            diagnostics = ROOT / "results" / "diagnostics"
+            diagnostics.mkdir(parents=True, exist_ok=True)
+            prefix = diagnostics / f"{editor['id']}-{process.pid if process else 'startup'}"
+            prefix.with_suffix(".txt").write_text(fixture.read_text(errors="replace"))
+            if input_driver == "xdotool":
+                try:
+                    subprocess.run(["import", "-window", "root", str(prefix.with_suffix(".png"))],
+                                   capture_output=True, timeout=5, check=False)
+                except (OSError, subprocess.SubprocessError):
+                    pass
             return {
                 "valid": False,
                 "error": str(error),

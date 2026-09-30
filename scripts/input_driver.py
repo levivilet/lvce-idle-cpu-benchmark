@@ -66,23 +66,19 @@ class XdotoolInput:
         self._require_focus()
 
     def open_idea_file(self, filename: str) -> None:
-        """Double-click IDEA's visible project file and wait for its editor tab."""
-        self._require_focus()
-        x, y = 150, 140
-        subprocess.run(["xdotool", "mousemove", "--window", self.window_id,
-                        str(x), str(y)], check=True)
-        subprocess.run(["xdotool", "click", "--repeat", "2", "--delay", "100",
-                        "--window", self.window_id, "1"], check=True)
-        deadline = time.monotonic() + 15
-        pattern = re.escape(filename)
+        """Wait for the project editor replacing IDEA's initial LightEdit window."""
+        pattern = r"^typing-cpu .*" + re.escape(filename) + r"$"
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             window = self._visible_window(pattern)
             if window:
                 self.window_id = window
+                self.focus_patterns = [pattern]
+                subprocess.run(["xdotool", "windowfocus", "--sync", window], check=True)
                 self._require_focus()
                 return
             time.sleep(.25)
-        raise RuntimeError(f"IntelliJ IDEA did not open the fixture {filename}")
+        raise RuntimeError(f"IntelliJ IDEA did not open the fixture {filename} in a project")
 
     def press_key(self, key: str) -> None:
         subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True)
@@ -240,6 +236,63 @@ class XdotoolInput:
             self.focus_patterns.append("^$")
         refreshed = self._visible_window(self.window_patterns)
         self.window_id = refreshed or focused
+
+    def accept_idea_open_project(self) -> None:
+        """Open a file launched in IDEA's simplified LightEdit mode as a project."""
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            prompt = self._visible_window("^Open in Project$")
+            if prompt:
+                break
+            if self._visible_window("^Choose Project Root Directory$"):
+                self.accept_idea_project_root()
+                return
+            if self._visible_window(r"^typing-cpu .*typing-cpu[.]txt$"):
+                return
+            time.sleep(.25)
+        else:
+            raise RuntimeError("IDEA did not offer to open the fixture in a project")
+        geometry = subprocess.run(
+            ["xdotool", "getwindowgeometry", "--shell", prompt],
+            capture_output=True, text=True, check=True,
+        )
+        dimensions = dict(
+            line.split("=", 1) for line in geometry.stdout.splitlines() if "=" in line
+        )
+        self._click_window(prompt, int(dimensions["WIDTH"]) - 78,
+                           int(dimensions["HEIGHT"]) - 29)
+        self.accept_idea_project_root()
+
+    def accept_idea_project_root(self) -> None:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            root = self._visible_window("^Choose Project Root Directory$")
+            if root:
+                break
+            time.sleep(.25)
+        else:
+            raise RuntimeError("IDEA did not show its project directory chooser")
+        if root:
+            geometry = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", root],
+                capture_output=True, text=True, check=True,
+            )
+            dimensions = dict(line.split("=", 1) for line in geometry.stdout.splitlines() if "=" in line)
+            subprocess.run(["xdotool", "windowfocus", "--sync", root], check=True)
+            subprocess.run(["xdotool", "mousemove", "--window", root,
+                            str(int(dimensions["WIDTH"]) - 135),
+                            str(int(dimensions["HEIGHT"]) - 27)], check=True)
+            subprocess.run(["xdotool", "click", "1"], check=True)
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                title = subprocess.run(["xdotool", "getwindowfocus", "getwindowname"],
+                                       capture_output=True, text=True, check=True).stdout.strip()
+                if not title:
+                    # IDEA's Trust Project modal has an empty title and its
+                    # default button trusts only this temporary fixture project.
+                    self.press_key("Return")
+                    break
+                time.sleep(.25)
 
     def clear(self) -> None:
         self._require_focus()

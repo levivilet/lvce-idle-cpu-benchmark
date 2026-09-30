@@ -75,7 +75,19 @@ class InputDriverTests(unittest.TestCase):
         self.assertEqual(run.call_args_list[2].args[0],
                          ["xdotool", "key", "--clearmodifiers", "Return"])
 
-    def test_idea_opens_fixture_from_project_pane_and_waits_for_tab(self):
+    def test_dialog_click_uses_client_coordinates_for_decorated_windows(self):
+        keyboard = XdotoolInput.__new__(XdotoolInput)
+        geometry = mock.Mock(stdout="X=425\nY=117\nWIDTH=424\nHEIGHT=458\n")
+        with mock.patch("input_driver.subprocess.run", side_effect=[
+                geometry, mock.Mock(), mock.Mock(), mock.Mock(), mock.Mock(stdout=""), mock.Mock()]) as run, \
+                mock.patch.object(keyboard, "_visible_window", return_value="456"), \
+                mock.patch("input_driver.time.sleep"):
+            keyboard.accept_idea_project_root()
+        self.assertEqual(run.call_args_list[2].args[0],
+                         ["xdotool", "mousemove", "--window", "456", "289", "431"])
+        self.assertEqual(run.call_args_list[3].args[0], ["xdotool", "click", "1"])
+
+    def test_idea_keeps_an_already_open_fixture_tab(self):
         keyboard = XdotoolInput.__new__(XdotoolInput)
         keyboard.window_id = "123"
         with mock.patch.object(keyboard, "_require_focus"), \
@@ -84,10 +96,8 @@ class InputDriverTests(unittest.TestCase):
             keyboard.open_idea_file("typing-cpu.txt")
         self.assertEqual(keyboard.window_id, "456")
         self.assertEqual(run.call_args_list[0].args[0],
-                         ["xdotool", "mousemove", "--window", "123", "150", "140"])
-        self.assertEqual(run.call_args_list[1].args[0],
-                         ["xdotool", "click", "--repeat", "2", "--delay", "100",
-                          "--window", "123", "1"])
+                         ["xdotool", "windowfocus", "--sync", "456"])
+        self.assertEqual(keyboard.focus_patterns, [r"^typing-cpu .*typing\-cpu\.txt$"])
 
 
 if __name__ == "__main__":
