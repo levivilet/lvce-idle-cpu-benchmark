@@ -259,6 +259,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 wait_for_cursor_workbench(fixture, timeout=1)
             window_patterns = {
                 "atom": "typing-cpu",
+                "eclipse": "Eclipse",
                 "idea": ("IntelliJ", "Data Sharing", "typing-cpu"),
                 "lapce": "Lapce",
                 "lvce": "typing-cpu",

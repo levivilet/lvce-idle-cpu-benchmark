@@ -87,6 +87,20 @@ class XdotoolInput:
         subprocess.run(["xdotool", "windowfocus", "--sync", dialog_id], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+o"], check=True)
         time.sleep(.5)
+        dialog_still_open = self._visible_window("^Open File$")
+        if dialog_still_open:
+            geometry = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", dialog_still_open],
+                capture_output=True, text=True, check=True,
+            )
+            dimensions = dict(
+                line.split("=", 1) for line in geometry.stdout.splitlines() if "=" in line
+            )
+            x = int(dimensions["X"]) + int(dimensions["WIDTH"]) - 50
+            y = int(dimensions["Y"]) + int(dimensions["HEIGHT"]) - 42
+            subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+            subprocess.run(["xdotool", "click", "1"], check=True)
+            time.sleep(.5)
         self._require_focus()
 
     def click_editor(self, position: tuple[int, int]) -> None:
