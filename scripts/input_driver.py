@@ -65,6 +65,25 @@ class XdotoolInput:
         time.sleep(.5)
         self._require_focus()
 
+    def open_idea_file(self, filename: str) -> None:
+        """Double-click IDEA's visible project file and wait for its editor tab."""
+        self._require_focus()
+        x, y = 150, 140
+        subprocess.run(["xdotool", "mousemove", "--window", self.window_id,
+                        str(x), str(y)], check=True)
+        subprocess.run(["xdotool", "click", "--repeat", "2", "--delay", "100",
+                        "--window", self.window_id, "1"], check=True)
+        deadline = time.monotonic() + 15
+        pattern = re.escape(filename)
+        while time.monotonic() < deadline:
+            window = self._visible_window(pattern)
+            if window:
+                self.window_id = window
+                self._require_focus()
+                return
+            time.sleep(.25)
+        raise RuntimeError(f"IntelliJ IDEA did not open the fixture {filename}")
+
     def press_key(self, key: str) -> None:
         subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True)
 
@@ -113,7 +132,7 @@ class XdotoolInput:
 
     def close_welcome(self) -> None:
         self._require_focus()
-        subprocess.run(["xdotool", "mousemove", "132", "132"], check=True)
+        subprocess.run(["xdotool", "mousemove", "132", "100"], check=True)
         subprocess.run(["xdotool", "click", "1"], check=True)
         time.sleep(.5)
         self._require_focus()

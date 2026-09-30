@@ -75,6 +75,20 @@ class InputDriverTests(unittest.TestCase):
         self.assertEqual(run.call_args_list[2].args[0],
                          ["xdotool", "key", "--clearmodifiers", "Return"])
 
+    def test_idea_opens_fixture_from_project_pane_and_waits_for_tab(self):
+        keyboard = XdotoolInput.__new__(XdotoolInput)
+        keyboard.window_id = "123"
+        with mock.patch.object(keyboard, "_require_focus"), \
+                mock.patch.object(keyboard, "_visible_window", return_value="456"), \
+                mock.patch("input_driver.subprocess.run") as run:
+            keyboard.open_idea_file("typing-cpu.txt")
+        self.assertEqual(keyboard.window_id, "456")
+        self.assertEqual(run.call_args_list[0].args[0],
+                         ["xdotool", "mousemove", "--window", "123", "150", "140"])
+        self.assertEqual(run.call_args_list[1].args[0],
+                         ["xdotool", "click", "--repeat", "2", "--delay", "100",
+                          "--window", "123", "1"])
+
 
 if __name__ == "__main__":
     unittest.main()

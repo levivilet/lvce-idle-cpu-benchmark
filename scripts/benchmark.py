@@ -229,6 +229,9 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
         fixture = workspace / "typing-cpu.txt"
         fixture.write_text("Typing CPU benchmark fixture.\n")
         command = command_for(editor, home)
+        if editor["id"] == "eclipse":
+            workspace_index = command.index("-data") + 1
+            command[workspace_index] = str(fixture.parent)
         if editor["id"] == "basic-electron" and input_driver == "ydotool":
             command.remove("--ozone-platform=x11")
             command.append("--ozone-platform=wayland")
@@ -259,7 +262,7 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
                 wait_for_cursor_workbench(fixture, timeout=1)
             window_patterns = {
                 "atom": "typing-cpu",
-                "eclipse": "Eclipse",
+                "eclipse": "Eclipse SDK",
                 "idea": ("IntelliJ", "Data Sharing", "typing-cpu"),
                 "lapce": "Lapce",
                 "lvce": "typing-cpu",
@@ -284,17 +287,18 @@ def trial(editor, settle_seconds, sample_seconds, input_driver, cadence_seconds)
             if editor["id"] == "theia":
                 keyboard.press_key("Return")
                 time.sleep(.5)
-            open_shortcuts = {"idea": "ctrl+shift+n"}
-            if editor["id"] in {"idea", "zed"}:
-                keyboard.open_file(fixture.name, open_shortcuts.get(editor["id"], "ctrl+p"))
             if editor["id"] == "idea":
-                keyboard.press_key("Return")
-                time.sleep(1)
+                keyboard.open_idea_file(fixture.name)
+            elif editor["id"] == "zed":
+                keyboard.open_file(fixture.name)
+            if editor["id"] == "idea":
+                keyboard.click_editor((800, 250))
             if editor["id"] == "theia":
                 keyboard.open_selected_file()
             if editor["id"] == "theia":
                 keyboard.click_editor(click_positions["theia"])
             keyboard.clear()
+            time.sleep(.5)
             measurement = typing_measurement(process, keyboard, fixture,
                                              sample_seconds, cadence_seconds)
             measurement.update({"valid": True, "pid": process.pid})

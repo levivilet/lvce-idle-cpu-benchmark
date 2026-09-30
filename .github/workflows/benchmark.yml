@@ -29,7 +29,7 @@ jobs:
       - name: Install desktop dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 curl xz-utils xvfb xauth xdotool openbox geany \
+          sudo apt-get install -y python3 curl xz-utils xvfb xauth xdotool openbox geany dbus-x11 \
             libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 \
             libxkbfile1 libsecret-1-0 mesa-utils mesa-vulkan-drivers libvulkan1 \
             libasound2t64 openjdk-21-jre
