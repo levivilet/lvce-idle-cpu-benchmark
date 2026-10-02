@@ -23,21 +23,16 @@ ipcMain.handle('write-file', async (_event, contents) => {
 })
 
 function createWindow() {
-  const title = `Basic Electron Editor - ${path.basename(requireFixture())}`
   const window = new BrowserWindow({
     width: 1280,
     height: 720,
     show: false,
-    title,
+    title: 'Basic Electron Editor',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
     },
-  })
-  window.on('page-title-updated', (event) => {
-    event.preventDefault()
-    window.setTitle(title)
   })
   window.loadFile(path.join(__dirname, 'index.html'))
   window.once('ready-to-show', () => window.show())

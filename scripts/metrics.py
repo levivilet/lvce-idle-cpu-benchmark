@@ -80,53 +80,6 @@ def process_tree(root_pid: int, proc_root: str | Path = "/proc") -> dict[int, in
     return counters
 
 
-def process_tree_memory_kb(root_pid: int, proc_root: str | Path = "/proc") -> int:
-    """Return the resident set size for the root process and live descendants."""
-    root = Path(proc_root)
-    pids = process_tree(root_pid, root)
-    total = 0
-    for pid in pids:
-        try:
-            status = (root / str(pid) / "status").read_text()
-        except (FileNotFoundError, PermissionError):
-            if pid == root_pid:
-                raise ValueError("root process disappeared")
-            continue
-        found_rss = False
-        for line in status.splitlines():
-            if line.startswith("VmRSS:"):
-                fields = line.split()
-                if len(fields) >= 2:
-                    total += int(fields[1])
-                    found_rss = True
-                break
-        if pid == root_pid and not found_rss:
-            raise ValueError("root process is missing its resident memory counter")
-    return total
-
-
-def summarize_memory(samples: list[tuple[float, int]]) -> dict:
-    """Summarize RSS samples using their actual time offsets."""
-    if len(samples) < 2:
-        raise ValueError("at least two memory samples are required")
-    if any(not isinstance(kb, int) or kb < 0 for _, kb in samples):
-        raise ValueError("RSS samples must be non-negative integers")
-    if any(next_time <= current_time
-           for (current_time, _), (next_time, _) in zip(samples, samples[1:])):
-        raise ValueError("memory sample timestamps must increase")
-    elapsed = samples[-1][0] - samples[0][0]
-    if elapsed <= 0:
-        raise ValueError("memory sample interval must be positive")
-    area = sum((next_time - current_time) * current_kb
-               for (current_time, current_kb), (next_time, _) in zip(samples, samples[1:]))
-    return {
-        "averageRssKb": area / elapsed,
-        "peakRssKb": max(kb for _, kb in samples),
-        "memorySamples": len(samples),
-        "memoryElapsedSeconds": elapsed,
-    }
-
-
 def ticks_to_usec(ticks: int, ticks_per_second: int) -> int:
     if ticks < 0 or ticks_per_second <= 0:
         raise ValueError("invalid process tick counter")

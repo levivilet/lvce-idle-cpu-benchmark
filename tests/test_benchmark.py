@@ -64,6 +64,24 @@ class CursorBenchmarkTests(unittest.TestCase):
                 "xdotool", "search", "--onlyvisible", "--name"
             ])
 
+    def test_idle_trial_only_launches_and_measures_the_editor(self):
+        editor = benchmark.load_editor("basic-electron")
+        process = mock.Mock(pid=123, returncode=None)
+        process.poll.return_value = None
+        measurement = {"valid": True, "cpuUsec": 0}
+        with mock.patch.object(benchmark.subprocess, "Popen", return_value=process) as popen, \
+                mock.patch.object(benchmark, "command_for", return_value=["editor"]), \
+                mock.patch.object(benchmark, "cgroup_measurement", return_value=None), \
+                mock.patch.object(benchmark, "process_measurement", return_value=measurement) as sample, \
+                mock.patch.object(benchmark, "terminate_process_group"):
+            result = benchmark.trial(editor, settle_seconds=0, sample_seconds=180)
+
+        command = popen.call_args.args[0]
+        self.assertTrue(result["valid"])
+        self.assertEqual(sample.call_args.args, (process, 180))
+        self.assertNotIn("xdotool", command)
+        self.assertNotIn("ydotool", command)
+
 
 if __name__ == "__main__":
     unittest.main()
