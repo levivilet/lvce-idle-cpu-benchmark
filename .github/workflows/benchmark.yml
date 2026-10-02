@@ -1,4 +1,4 @@
-name: Desktop typing benchmark
+name: Idle CPU benchmark
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
       - name: Install desktop dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 curl xz-utils xvfb xauth xdotool openbox geany dbus-x11 imagemagick \
+          sudo apt-get install -y python3 curl xz-utils xvfb xauth xdotool openbox geany \
             libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 \
             libxkbfile1 libsecret-1-0 mesa-utils mesa-vulkan-drivers libvulkan1 \
             libasound2t64 openjdk-21-jre
@@ -63,12 +63,12 @@ jobs:
         with:
           path: ${{ steps.archive.outputs.path }}
           key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.archive.outputs.key }}
-      - name: Measure CPU and memory while typing
+      - name: Measure idle CPU
         run: |
           if [[ "${{ github.event_name }}" == pull_request ]]; then
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 180 --cadence-seconds 1
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --repeats 1 --settle-seconds 5 --sample-seconds 180
           else
-            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 180 --cadence-seconds 1
+            bash scripts/run.sh --editor "${{ matrix.editor }}" --sample-seconds 180
           fi
       - uses: actions/upload-artifact@v5
         if: always()

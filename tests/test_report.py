@@ -12,17 +12,11 @@ from scripts import report
 def sample(editor_id, utilization=25):
     return {
         "editor": {"id": editor_id},
-        "protocol": {"definition": "100% is one busy logical CPU",
-                     "typingDurationSeconds": 2, "typingCadenceSeconds": 1},
+        "protocol": {"definition": "100% is one busy logical CPU"},
         "host": {"platform": "test", "cpuCount": 4},
-        "trials": [{"valid": True, "repeat": 1, "cpuUsec": utilization * 20000,
-                    "elapsedSeconds": 2, "utilizationPercent": utilization,
-                    "cpuTicks": utilization * 2, "ticksPerSecond": 100,
-                    "source": "proc-process-tree", "averageRssKb": 51200,
-                    "peakRssKb": 61440, "memoryElapsedSeconds": 2,
-                    "inputCount": 2, "inputOffsetsSeconds": [0, 1],
-                    "cadenceSeconds": 1, "savedContentVerified": True,
-                    "rssSamplesKb": [[0, 40960], [1, 61440], [2, 51200]], "memorySamples": 3}],
+        "trials": [{"valid": True, "repeat": 1, "cpuUsec": 250000,
+                    "elapsedSeconds": 1, "utilizationPercent": utilization,
+                    "source": "proc-process-tree"}],
     }
 
 
@@ -44,28 +38,6 @@ class ReportTests(unittest.TestCase):
 
     def test_accepts_values_above_one_hundred_percent(self):
         self.assertEqual(report.validate_result(sample("lvce", 135), "lvce")["trials"][0]["utilizationPercent"], 135)
-
-    def test_rejects_invalid_memory_and_typing_evidence(self):
-        data = sample("lvce")
-        data["trials"][0]["peakRssKb"] = 1
-        with self.assertRaisesRegex(ValueError, "memory"):
-            report.validate_result(data, "lvce")
-        data = sample("lvce")
-        data["trials"][0]["inputCount"] = 1
-        with self.assertRaisesRegex(ValueError, "typing evidence"):
-            report.validate_result(data, "lvce")
-        data = sample("lvce")
-        data["trials"][0]["inputOffsetsSeconds"] = [0, 1.7]
-        with self.assertRaisesRegex(ValueError, "cadence"):
-            report.validate_result(data, "lvce")
-        data = sample("lvce")
-        data["protocol"]["typingDurationSeconds"] = 180
-        with self.assertRaisesRegex(ValueError, "typing evidence"):
-            report.validate_result(data, "lvce")
-        data = sample("lvce")
-        data["trials"][0]["cpuTicks"] += 1
-        with self.assertRaisesRegex(ValueError, "CPU counters"):
-            report.validate_result(data, "lvce")
 
     def test_requires_every_editor_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -94,8 +66,6 @@ class ReportTests(unittest.TestCase):
             page = (output / "index.html").read_text()
             report_json = json.loads((output / "report.json").read_text())
             self.assertIn("125.00%", page)
-            self.assertIn("50.0 / 60.0 MiB", page)
-            self.assertIn("Median average resident memory while typing", page)
             self.assertIn(f"All {len(report.EDITORS)} editors completed", page)
             self.assertIn("github.com/example/run/1", page)
             self.assertEqual(len(report_json["editors"]), len(report.EDITORS))
@@ -113,15 +83,6 @@ class ReportTests(unittest.TestCase):
         self.assertIn("Low editor", chart)
         self.assertIn("High editor", chart)
         self.assertIn("50.00%", chart)
-
-    def test_memory_chart_sorts_by_average_rss_with_zero_origin(self):
-        chart = report.build_median_memory_chart([
-            {"name": "Large", "medianAverageRssKb": 100 * 1024},
-            {"name": "Small", "medianAverageRssKb": 20 * 1024},
-        ])
-        markers = re.findall(r'<circle class="marker" cx="([\d.]+)" cy="([\d.]+)" r="5"><title>([^<]+):', chart)
-        self.assertEqual([marker[2] for marker in markers], ["Small", "Large"])
-        self.assertGreater(float(markers[0][1]), float(markers[1][1]))
 
     def test_median_chart_keeps_ties_labeled_and_zero_visible(self):
         chart = report.build_median_chart([
