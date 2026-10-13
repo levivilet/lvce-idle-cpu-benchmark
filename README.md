@@ -22,6 +22,9 @@ raw JSON for each editor. An incomplete or invalid matrix is not published.
   pinned version's welcome-state keys in its SQLite storage, then opens the
   benchmark fixture. The trial starts settling only after a visible Cursor
   window title contains the fixture name.
+- VS Code is pinned to 1.136.2. Each trial sets `editor.cursorBlinking` to
+  `solid` in its isolated user profile before launch and waits for a visible
+  window title containing the benchmark fixture before settling.
 - Startup and settling happen before the idle interval. No keyboard, mouse, or
   file workload is sent during the interval.
 - CPU time includes the editor's descendants. When a delegated cgroup is

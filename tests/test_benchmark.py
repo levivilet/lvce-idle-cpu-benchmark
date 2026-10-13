@@ -44,6 +44,74 @@ class CursorBenchmarkTests(unittest.TestCase):
                 values = dict(connection.execute("SELECT key, value FROM ItemTable"))
             self.assertEqual(values, benchmark.CURSOR_WELCOME_VALUES)
 
+    def test_vscode_profile_disables_cursor_blinking_and_preserves_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            settings = home / "profile/User/settings.json"
+            settings.parent.mkdir(parents=True)
+            settings.write_text('{"workbench.colorTheme": "Default Dark+"}\n')
+
+            benchmark.prepare_vscode_profile(home)
+
+            self.assertEqual(benchmark.json.loads(settings.read_text()), {
+                "workbench.colorTheme": "Default Dark+",
+                "editor.cursorBlinking": "solid",
+            })
+
+    def test_vscode_trial_sets_isolated_profile_before_launch(self):
+        editor = benchmark.load_editor("vscode")
+        process = mock.Mock(pid=123, returncode=None)
+        process.poll.return_value = None
+        measurement = {"valid": True, "cpuUsec": 0}
+
+        def launch(command, **_kwargs):
+            profile_index = command.index("--user-data-dir") + 1
+            settings = Path(command[profile_index]) / "User/settings.json"
+            self.assertEqual(benchmark.json.loads(settings.read_text()), benchmark.VSCODE_SETTINGS)
+            return process
+
+        with mock.patch.object(benchmark.subprocess, "Popen", side_effect=launch), \
+                mock.patch.object(benchmark, "command_for", side_effect=lambda _editor, home: [
+                    "code", "--user-data-dir", str(home / "profile")
+                ]), \
+                mock.patch.object(benchmark, "wait_for_vscode_workbench"), \
+                mock.patch.object(benchmark, "cgroup_measurement", return_value=None), \
+                mock.patch.object(benchmark, "process_measurement", return_value=measurement), \
+                mock.patch.object(benchmark, "terminate_process_group"):
+            result = benchmark.trial(editor, settle_seconds=0, sample_seconds=1)
+
+        self.assertTrue(result["valid"])
+
+    def test_other_editor_trial_does_not_create_vscode_settings(self):
+        editor = benchmark.load_editor("basic-electron")
+        process = mock.Mock(pid=123, returncode=None)
+        process.poll.return_value = None
+        measurement = {"valid": True, "cpuUsec": 0}
+
+        def launch(_command, **kwargs):
+            self.assertFalse((Path(kwargs["cwd"]) / "profile/User/settings.json").exists())
+            return process
+
+        with mock.patch.object(benchmark.subprocess, "Popen", side_effect=launch), \
+                mock.patch.object(benchmark, "command_for", return_value=["editor"]), \
+                mock.patch.object(benchmark, "cgroup_measurement", return_value=None), \
+                mock.patch.object(benchmark, "process_measurement", return_value=measurement), \
+                mock.patch.object(benchmark, "terminate_process_group"):
+            result = benchmark.trial(editor, settle_seconds=0, sample_seconds=1)
+
+        self.assertTrue(result["valid"])
+
+    def test_vscode_workbench_wait_requires_fixture_window(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary) / "idle-cpu.txt"
+            visible = mock.Mock(returncode=0, stdout="17\n", stderr="")
+            title = mock.Mock(returncode=0, stdout="idle-cpu.txt - Visual Studio Code", stderr="")
+            with mock.patch.object(benchmark.subprocess, "run", side_effect=[visible, title]) as run:
+                benchmark.wait_for_vscode_workbench(fixture)
+            self.assertEqual(run.call_args_list[0].args[0][:4], [
+                "xdotool", "search", "--onlyvisible", "--name"
+            ])
+
     def test_workbench_wait_rejects_missing_fixture_window(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary) / "idle-cpu.txt"
