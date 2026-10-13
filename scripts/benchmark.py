@@ -24,6 +24,7 @@ CURSOR_WELCOME_VALUES = {
         {"authenticationSettings": {"githubLoggedIn": False}}, separators=(",", ":")
     ),
 }
+VSCODE_SETTINGS = {"editor.cursorBlinking": "solid"}
 
 
 def load_editor(editor_id):
@@ -126,6 +127,15 @@ def prepare_cursor_profile(editor, home, environment, stdout, stderr):
             raise RuntimeError("Cursor profile welcome state was not saved")
 
 
+def prepare_vscode_profile(home):
+    """Disable cursor blinking in this trial's isolated VS Code profile."""
+    settings = home / "profile/User/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    values = json.loads(settings.read_text()) if settings.exists() else {}
+    values.update(VSCODE_SETTINGS)
+    settings.write_text(json.dumps(values, indent=2) + "\n")
+
+
 def wait_for_cursor_workbench(fixture, timeout=30):
     """Require a visible Cursor window whose title names the opened fixture."""
     deadline = time.monotonic() + timeout
@@ -144,6 +154,26 @@ def wait_for_cursor_workbench(fixture, timeout=30):
                     return
         time.sleep(0.5)
     raise RuntimeError(f"Cursor did not show the benchmark fixture {fixture.name}")
+
+
+def wait_for_vscode_workbench(fixture, timeout=30):
+    """Require a visible VS Code window whose title names the opened fixture."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        windows = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--name", fixture.name],
+            capture_output=True, text=True, check=False,
+        )
+        if windows.returncode == 0 and windows.stdout.strip():
+            for window_id in windows.stdout.splitlines():
+                title = subprocess.run(
+                    ["xdotool", "getwindowname", window_id],
+                    capture_output=True, text=True, check=False,
+                )
+                if title.returncode == 0 and fixture.name in title.stdout:
+                    return
+        time.sleep(0.5)
+    raise RuntimeError(f"VS Code did not show the benchmark fixture {fixture.name}")
 
 
 def cgroup_measurement(editor, elapsed):
@@ -204,17 +234,23 @@ def trial(editor, settle_seconds, sample_seconds):
                 prepare_cursor_profile(editor, home, environment,
                                        home / "cursor-bootstrap.stdout.log",
                                        home / "cursor-bootstrap.stderr.log")
+            if editor["id"] == "vscode":
+                prepare_vscode_profile(home)
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
                 process = subprocess.Popen(command, cwd=home, env=environment,
                                            stdout=stdout, stderr=stderr,
                                            start_new_session=True)
             if editor["id"] == "cursor":
                 wait_for_cursor_workbench(fixture)
+            if editor["id"] == "vscode":
+                wait_for_vscode_workbench(fixture)
             time.sleep(settle_seconds)
             if process.poll() is not None:
                 raise RuntimeError(f"editor exited during startup ({process.returncode})")
             if editor["id"] == "cursor":
                 wait_for_cursor_workbench(fixture, timeout=1)
+            if editor["id"] == "vscode":
+                wait_for_vscode_workbench(fixture, timeout=1)
             measurement = cgroup_measurement(editor, sample_seconds)
             if measurement is None:
                 measurement = process_measurement(process, sample_seconds)
