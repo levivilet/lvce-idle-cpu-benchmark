@@ -29,7 +29,7 @@ class EditorLockTest(unittest.TestCase):
     def test_download_uses_browser_user_agent_and_verifies_checksum(self):
         payload = b"checksum-verified editor archive"
         entry = {
-            "id": "cursor", "version": "3.22.12", "url": "https://example.com/cursor.deb",
+            "id": "cursor", "version": "3.27.22", "url": "https://example.com/cursor.deb",
             "sha256": hashlib.sha256(payload).hexdigest(),
         }
         with tempfile.TemporaryDirectory() as directory, unittest.mock.patch.object(

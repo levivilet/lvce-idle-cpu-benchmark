@@ -2,56 +2,56 @@
   {
     "id": "lvce",
     "name": "LVCE Editor",
-    "version": "v0.125.20",
-    "archive": "lvce-v0.125.20_amd64.deb",
-    "url": "https://github.com/lvce-editor/lvce-editor/releases/download/v0.125.20/lvce-v0.125.20_amd64.deb",
-    "sha256": "856d80db662a0fa922e2b20381b7ff98363aec54f92c8f9be02febfa0d6b9572",
+    "version": "v0.126.11",
+    "archive": "lvce-v0.126.11_amd64.deb",
+    "url": "https://github.com/lvce-editor/lvce-editor/releases/download/v0.126.11/lvce-v0.126.11_amd64.deb",
+    "sha256": "c005cbf96d3bd23282bc11ddd49fe220e620c887c8148a6e9aef133754c7abd7",
     "binary": "usr/lib/lvce/lvce"
   },
   {
     "id": "vscode",
     "name": "VS Code",
-    "version": "1.136.2",
-    "archive": "vscode.tar.gz",
-    "url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/code-stable-x64-1788561485.tar.gz",
-    "sha256": "2bab551c3677d33010e317a7845e61d2f0fa0c80f8518399c42e0f941f64f18f",
+    "version": "1.143.1",
+    "archive": "code-stable-x64-1792691793.tar.gz",
+    "url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/e646868227c3e3a9e3f24277c8c7220be42c0be7/code-stable-x64-1792691793.tar.gz",
+    "sha256": "48f658052e54e020a1c1be7b37ac0f9ae39f07e8ccda805c63f053cfda72b2be",
     "binary": "VSCode-linux-x64/code"
   },
   {
     "id": "cursor",
     "name": "Cursor",
-    "version": "3.22.12",
-    "archive": "cursor_3.22.12_amd64.deb",
-    "url": "https://downloads.cursor.com/production/3a92974361033b2051526321308c2740fe5912c5/linux/x64/deb/amd64/deb/cursor_3.22.12_amd64.deb",
-    "sha256": "8b9198f7dde79f7e27cc83dabf3c66a93ca5303b6919719100c82f29d9498a65",
+    "version": "3.27.22",
+    "archive": "cursor_3.27.22_amd64.deb",
+    "url": "https://downloads.cursor.com/production/b1aa50cb6db84fd3e8c808259cb172ea73425c1f/linux/x64/deb/amd64/deb/cursor_3.27.22_amd64.deb",
+    "sha256": "863a9dd15ca5fe84dd2f8e74fe2e926e8b438692f202277a89dd0ec3d928bf98",
     "binary": "usr/share/cursor/cursor"
   },
   {
     "id": "zed",
     "name": "Zed",
-    "version": "v1.18.1",
+    "version": "v1.25.3",
     "archive": "zed-linux-x86_64.tar.gz",
-    "url": "https://github.com/zed-industries/zed/releases/download/v1.18.1/zed-linux-x86_64.tar.gz",
-    "sha256": "eea62268d8ec5fd3587df06fa76e072c104cca5e0b0b0abecbc28ae5b87c0bad",
+    "url": "https://github.com/zed-industries/zed/releases/download/v1.25.3/zed-linux-x86_64.tar.gz",
+    "sha256": "35f9115acd8b4c3bea6ed20f7c9b6ec8f1d2c2dd5a1cc438d552167b5ed4b342",
     "binary": "zed.app/libexec/zed-editor"
   },
   {
     "id": "eclipse",
     "name": "Eclipse SDK",
-    "version": "4.36",
-    "archive": "eclipse-SDK-4.36-linux-gtk-x86_64.tar.gz",
-    "url": "https://archive.eclipse.org/eclipse/downloads/drops4/R-4.36-202505281830/eclipse-SDK-4.36-linux-gtk-x86_64.tar.gz",
-    "sha256": "59df744a4c1405200e10c87e430ec04da3e61f0f7cad59b22da934335d21d4bc",
+    "version": "4.41",
+    "archive": "eclipse-SDK-4.41-linux-gtk-x86_64.tar.gz",
+    "url": "https://archive.eclipse.org/eclipse/downloads/drops4/R-4.41-202608281142/eclipse-SDK-4.41-linux-gtk-x86_64.tar.gz",
+    "sha256": "5bb6ca23e7f95486fcaf4c1f01d66a242d9a3a7d64cd3d572fd65e03769b2c7c",
     "binary": "eclipse/eclipse"
   },
   {
     "id": "idea",
     "name": "IntelliJ IDEA CE",
-    "version": "2025.2.6.3",
-    "archive": "ideaIC-2025.2.6.3.tar.gz",
-    "url": "https://download.jetbrains.com/idea/ideaIC-2025.2.6.3.tar.gz",
-    "sha256": "f9bb0c6e7de99becbd738937dd521864ee2226965331222d51fb3d921575fb00",
-    "binary": "idea-IC-252.28539.97/bin/idea.sh"
+    "version": "2026.2.3",
+    "archive": "idea-2026.2.3.tar.gz",
+    "url": "https://download.jetbrains.com/idea/idea-2026.2.3.tar.gz",
+    "sha256": "68751c8ae4d49407251cd197df795fbed91b6fdc85d10c73c4649a99e496ab37",
+    "binary": "idea-IU-262.10968.63/bin/idea.sh"
   },
   {
     "id": "atom",
@@ -74,31 +74,31 @@
   {
     "id": "theia",
     "name": "Eclipse Theia IDE",
-    "version": "1.75.0",
-    "archive": "TheiaIDE-1.75.0.deb",
-    "url": "https://download.eclipse.org/theia/ide/1.75.0/linux/TheiaIDE.deb",
-    "sha256": "78120bd47d02e8f9537a017c76e37a89cef2230ed486244e42bbdee9e9c38225",
+    "version": "1.76.1",
+    "archive": "TheiaIDE-1.76.1.deb",
+    "url": "https://download.eclipse.org/theia/ide/1.76.1/linux/TheiaIDE.deb",
+    "sha256": "ec3a3b5596fc7be9c99e7e242514341c6bda28762cd76644cfa502f992887d97",
     "binary": "opt/TheiaIDE/theia-ide-electron-app"
   },
   {
     "id": "basic-electron",
     "name": "Basic Electron",
-    "version": "Electron 44.3.0",
-    "archive": "electron-v44.3.0-linux-x64.zip",
-    "url": "https://github.com/electron/electron/releases/download/v44.3.0/electron-v44.3.0-linux-x64.zip",
-    "sha256": "8b49b9efdd73c0f467edc3c1cd5678392c384ccf224f34ff54179f736e2f384b",
+    "version": "Electron 45.1.0",
+    "archive": "electron-v45.1.0-linux-x64.zip",
+    "url": "https://github.com/electron/electron/releases/download/v45.1.0/electron-v45.1.0-linux-x64.zip",
+    "sha256": "9dafab2c57ce209f8f716f8f3e4fddd8ffe0820e2455bfbbfc00b0fc13e03a3b",
     "binary": "electron",
     "app": "basic-electron"
   },
   {
     "id": "geany",
     "name": "Geany",
-    "version": "Ubuntu package",
+    "version": "2.1-2build2",
     "archive": null,
     "url": null,
     "sha256": null,
     "binary": "geany",
     "package": "geany",
-    "notes": "Installed from the Ubuntu 26.04 runner image package source."
+    "notes": "Ubuntu 26.04 runner package (geany 2.1-2build2)."
   }
 ]
